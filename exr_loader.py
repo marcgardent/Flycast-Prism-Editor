@@ -1,11 +1,13 @@
 import threading
 import OpenImageIO as oiio
+from image_processor import ImageProcessor
 
 class EXRLoader:
-    def __init__(self, on_success, on_error, on_cancelled):
+    def __init__(self, on_success, on_error, on_cancelled, on_progress=None):
         self.on_success = on_success
         self.on_error = on_error
         self.on_cancelled = on_cancelled
+        self.on_progress = on_progress
         self.cancel_event = threading.Event()
 
     def load(self, path):
@@ -18,6 +20,8 @@ class EXRLoader:
 
     def _load_thread(self, path):
         try:
+            if self.on_progress:
+                self.on_progress("Lecture du fichier EXR...")
             input_file = oiio.ImageInput.open(path)
             if not input_file:
                 raise Exception(f"Impossible d'ouvrir le fichier : {oiio.geterror()}")
@@ -42,10 +46,28 @@ class EXRLoader:
                 return
 
             # Extraction des canaux
+            if self.on_progress:
+                self.on_progress("Extraction des canaux...")
             channels_data = {name: raw_data[:, :, i] for i, name in enumerate(spec.channelnames)}
             available_channels = spec.channelnames
+            
+            # Pre-calcul des images composites et par canal
+            precomputed_images = {}
+            modes_to_compute = ImageProcessor.get_available_composite_modes(available_channels)
+            modes_to_compute.extend(available_channels)
+            
+            total_modes = len(modes_to_compute)
+            for i, mode in enumerate(modes_to_compute):
+                if self.cancel_event.is_set():
+                    self.on_cancelled()
+                    return
+                if self.on_progress:
+                    self.on_progress(f"Pré-calcul : {mode} ({i+1}/{total_modes})...")
+                
+                # Precompute the view mode 
+                precomputed_images[mode] = ImageProcessor.process_view_mode(mode, (w, h), channels_data)
 
-            self.on_success(path, w, h, channels_data, available_channels)
+            self.on_success(path, w, h, channels_data, available_channels, precomputed_images)
 
         except Exception as e:
             self.on_error(str(e))

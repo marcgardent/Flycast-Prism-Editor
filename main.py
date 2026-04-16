@@ -21,6 +21,7 @@ class FlycastViewer(ctk.CTk):
         self.available_channels = []
         self.image_size = (0, 0)
         self.last_numpy_image = None
+        self.view_cache = {}
         self.full_pil_image = None
         self.current_view_mode = "Composite (RGB)"
         self.magnifier_size = 240
@@ -75,9 +76,11 @@ class FlycastViewer(ctk.CTk):
         ctk.CTkLabel(self.sidebar, text="MODES COMPOSITES", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(25, 5))
         self.composite_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         self.composite_frame.pack(fill="x", padx=15)
-        self._add_view_button(self.composite_frame, "Composite (RGB)")
-        self._add_view_button(self.composite_frame, "Normal Map")
-        self._add_view_button(self.composite_frame, "Albedo + AO")
+        self.composite_buttons = {
+            "Composite (RGB)": self._add_view_button(self.composite_frame, "Composite (RGB)"),
+            "Normal Map": self._add_view_button(self.composite_frame, "Normal Map"),
+            "Albedo + AO": self._add_view_button(self.composite_frame, "Albedo + AO")
+        }
 
         # Liste des canaux
         ctk.CTkLabel(self.sidebar, text="CANAUX (BLEU = STANDARD)", font=ctk.CTkFont(size=13, weight="bold")).pack(
@@ -133,6 +136,7 @@ class FlycastViewer(ctk.CTk):
         if clear: self.info_box.delete("0.0", "end")
         self.info_box.insert("end", f"> {text}\n")
         self.info_box.see("end")
+        print(text)
 
     def show_loading(self, message="TRAITEMENT EN COURS..."):
         self.is_loading = True
@@ -167,13 +171,17 @@ class FlycastViewer(ctk.CTk):
             self.show_loading("CHARGEMENT DE L'EXR...")
             self.loader.load(path)
 
-    def _on_load_success(self, path, w, h, channels_data, available_channels):
+    def _on_load_success(self, path, w, h, channels_data, available_channels, precomputed_images):
         self.image_size = (w, h)
         self.current_exr_data = channels_data
         self.available_channels = available_channels
+        self.view_cache = precomputed_images  # Initialiser le cache avec les images pré-calculées
 
         self.log(f"Fichier : {os.path.basename(path)}", clear=True)
         self.log(f"Résolution : {w}x{h}")
+
+        # Mise à jour des boutons composites
+        self._update_composite_buttons_state()
 
         for btn in self.channel_buttons: btn.destroy()
         self.channel_buttons = []
@@ -188,7 +196,31 @@ class FlycastViewer(ctk.CTk):
             self.channel_buttons.append(btn)
 
         self.hide_loading()
-        self.update_view_mode("Composite (RGB)")
+        
+        # Choisir un mode par défaut valide
+        default_mode = "Composite (RGB)"
+        if self.composite_buttons[default_mode].cget("state") == "disabled":
+            if self.available_channels:
+                default_mode = sorted(self.available_channels)[0]
+            else:
+                default_mode = None
+        
+        if default_mode:
+            self.update_view_mode(default_mode)
+
+    def _update_composite_buttons_state(self):
+        # Composite (RGB) nécessite Albedo.R, G, B
+        has_rgb = all(c in self.available_channels for c in ['Albedo.R', 'Albedo.G', 'Albedo.B'])
+        self.composite_buttons["Composite (RGB)"].configure(state="normal" if has_rgb else "disabled")
+        
+        # Normal Map nécessite Normal.X, Y, Z
+        has_normals = all(c in self.available_channels for c in ['Normal.X', 'Normal.Y', 'Normal.Z'])
+        self.composite_buttons["Normal Map"].configure(state="normal" if has_normals else "disabled")
+        
+        # Albedo + AO nécessite au moins un Albedo et SSAO.AO
+        has_albedo = any(c in self.available_channels for c in ['Albedo.R', 'Albedo.G', 'Albedo.B'])
+        has_ao = 'SSAO.AO' in self.available_channels
+        self.composite_buttons["Albedo + AO"].configure(state="normal" if (has_albedo and has_ao) else "disabled")
 
     def _on_load_error(self, error_msg):
         self.hide_loading()
@@ -201,6 +233,12 @@ class FlycastViewer(ctk.CTk):
 
     def safe_update_view_mode(self, mode):
         if not self.current_exr_data or self.is_loading: return
+        
+        # Si l'image est déjà dans le cache, on l'affiche instantanément sans popup
+        if mode in self.view_cache:
+            self.update_view_mode(mode)
+            return
+
         self.show_loading(f"CALCUL : {mode}")
         self.after(10, lambda: self._process_view_mode(mode))
 
@@ -212,7 +250,12 @@ class FlycastViewer(ctk.CTk):
 
     def update_view_mode(self, mode):
         self.current_view_mode = mode
-        self.last_numpy_image = ImageProcessor.process_view_mode(mode, self.image_size, self.current_exr_data)
+        
+        # Utiliser le cache si disponible, sinon calculer et mettre en cache
+        if mode not in self.view_cache:
+            self.view_cache[mode] = ImageProcessor.process_view_mode(mode, self.image_size, self.current_exr_data)
+        
+        self.last_numpy_image = self.view_cache[mode]
         self.refresh_image_display()
 
     def on_resize(self, event=None):

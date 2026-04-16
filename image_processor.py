@@ -3,6 +3,17 @@ from PIL import Image
 
 class ImageProcessor:
     @staticmethod
+    def get_available_composite_modes(available_channels):
+        modes = []
+        if all(c in available_channels for c in ['Albedo.R', 'Albedo.G', 'Albedo.B']):
+            modes.append("Composite (RGB)")
+        if all(c in available_channels for c in ['Normal.X', 'Normal.Y', 'Normal.Z']):
+            modes.append("Normal Map")
+        if any(c in available_channels for c in ['Albedo.R', 'Albedo.G', 'Albedo.B']) and 'SSAO.AO' in available_channels:
+            modes.append("Albedo + AO")
+        return modes
+
+    @staticmethod
     def process_view_mode(mode, image_size, exr_data):
         w, h = image_size
         img_np = np.zeros((h, w, 3), dtype=np.float32)
