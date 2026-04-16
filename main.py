@@ -7,93 +7,97 @@ import numpy as np
 import OpenImageIO as oiio
 from platformdirs import user_pictures_dir
 
+# Liste des canaux définis dans le référentiel technique Flycast
+STANDARD_CHANNELS = [
+    'Albedo.R', 'Albedo.G', 'Albedo.B',
+    'Normal.X', 'Normal.Y', 'Normal.Z',
+    'Depth.Z', 'Material.ID', 'SSAO.AO'
+]
+
 
 class FlycastViewer(ctk.CTk):
     def __init__(self):
         super().__init__()
 
         self.title("Flycast G-Buffer Viewer")
-        self.geometry("1200x900")
+        self.geometry("1500x900")
 
-        # Application State
+        # État de l'application
         self.current_exr_data = {}
         self.available_channels = []
         self.image_size = (0, 0)
         self.last_numpy_image = None
         self.full_pil_image = None
         self.current_view_mode = "Composite (RGB)"
-        self.magnifier_size = 200
+        self.magnifier_size = 240
         self.display_size = (0, 0)
         self.default_dir = user_pictures_dir()
         self.current_pixel_value = "N/A"
 
-        # UI Layout
+        # Configuration de la grille
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # --- SIDEBAR ---
-        self.sidebar = ctk.CTkFrame(self, width=280, corner_radius=0)
+        # --- BARRE LATÉRALE (SIDEBAR) ---
+        self.sidebar = ctk.CTkFrame(self, width=350, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_propagate(False)
 
-        self.logo_label = ctk.CTkLabel(self.sidebar, text="FLYCAST G-BUFFER", font=ctk.CTkFont(size=20, weight="bold"))
-        self.logo_label.pack(pady=(20, 20), padx=20)
+        self.logo_label = ctk.CTkLabel(self.sidebar, text="FLYCAST G-BUFFER", font=ctk.CTkFont(size=22, weight="bold"))
+        self.logo_label.pack(pady=(25, 20), padx=20)
 
-        self.open_button = ctk.CTkButton(self.sidebar, text="OUVRIR EXR", command=self.open_file, fg_color="#2c3e50",
-                                         hover_color="#34495e")
+        self.open_button = ctk.CTkButton(self.sidebar, text="OUVRIR EXR", command=self.open_file,
+                                         fg_color="#2c3e50", hover_color="#34495e", height=40)
         self.open_button.pack(pady=10, padx=20, fill="x")
 
-        # Inspector Section (New)
-        ctk.CTkLabel(self.sidebar, text="INSPECTEUR (CLIC IMAGE)", font=ctk.CTkFont(size=12, weight="bold")).pack(
-            pady=(20, 5))
-        self.inspect_entry = ctk.CTkEntry(self.sidebar, placeholder_text="Valeur copiée ici...")
+        # Section Inspecteur
+        ctk.CTkLabel(self.sidebar, text="INSPECTEUR (CLIC IMAGE)", font=ctk.CTkFont(size=13, weight="bold")).pack(
+            pady=(25, 5))
+        self.inspect_entry = ctk.CTkEntry(self.sidebar, placeholder_text="Valeur copiée ici...", height=35)
         self.inspect_entry.pack(pady=5, padx=20, fill="x")
 
-        # Tools Section
-        ctk.CTkLabel(self.sidebar, text="OUTILS", font=ctk.CTkFont(size=12, weight="bold")).pack(pady=(20, 5))
+        # Section Outils
+        ctk.CTkLabel(self.sidebar, text="OUTILS", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(25, 5))
         self.magnifier_var = ctk.BooleanVar(value=True)
-        self.magnifier_switch = ctk.CTkSwitch(self.sidebar, text="Loupe (1:1)", variable=self.magnifier_var)
+        self.magnifier_switch = ctk.CTkSwitch(self.sidebar, text="Loupe Pixel-Perfect (1:1)",
+                                              variable=self.magnifier_var)
         self.magnifier_switch.pack(pady=5, padx=20, anchor="w")
 
-        # Composite Modes Section
-        ctk.CTkLabel(self.sidebar, text="MODES COMPOSITES", font=ctk.CTkFont(size=12, weight="bold")).pack(pady=(20, 5))
+        # Modes Composites
+        ctk.CTkLabel(self.sidebar, text="MODES COMPOSITES", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(25, 5))
         self.composite_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        self.composite_frame.pack(fill="x", padx=10)
+        self.composite_frame.pack(fill="x", padx=15)
         self.add_view_button(self.composite_frame, "Composite (RGB)")
         self.add_view_button(self.composite_frame, "Normal Map")
         self.add_view_button(self.composite_frame, "Albedo + AO")
 
-        # Individual Channels Section
-        ctk.CTkLabel(self.sidebar, text="CANAUX INDIVIDUELS", font=ctk.CTkFont(size=12, weight="bold")).pack(
-            pady=(20, 5))
-        self.channels_scroll = ctk.CTkScrollableFrame(self.sidebar, height=250, fg_color="transparent")
-        self.channels_scroll.pack(fill="both", expand=True, padx=10, pady=5)
+        # Liste des canaux avec distinction de couleur
+        ctk.CTkLabel(self.sidebar, text="CANAUX (BLEU = STANDARD)", font=ctk.CTkFont(size=13, weight="bold")).pack(
+            pady=(25, 5))
+        self.channels_scroll = ctk.CTkScrollableFrame(self.sidebar, height=350, fg_color="transparent")
+        self.channels_scroll.pack(fill="both", expand=True, padx=15, pady=5)
         self.channel_buttons = []
 
-        # Info Console
-        self.info_box = ctk.CTkTextbox(self.sidebar, height=100, font=ctk.CTkFont(size=11), fg_color="#1a1a1a")
-        self.info_box.pack(side="bottom", fill="x", padx=15, pady=15)
-        self.info_box.insert("0.0", "En attente de fichier...")
+        # Console
+        self.info_box = ctk.CTkTextbox(self.sidebar, height=120, font=ctk.CTkFont(size=11), fg_color="#1a1a1a",
+                                       text_color="#aaaaaa")
+        self.info_box.pack(side="bottom", fill="x", padx=20, pady=20)
+        self.info_box.insert("0.0", "En attente de chargement...")
 
-        # --- DISPLAY AREA ---
-        self.image_container = ctk.CTkFrame(self, fg_color="#101010", corner_radius=0)
+        # --- ZONE D'AFFICHAGE ---
+        self.image_container = ctk.CTkFrame(self, fg_color="#050505", corner_radius=0)
         self.image_container.grid(row=0, column=1, sticky="nsew")
 
         self.display_label = ctk.CTkLabel(self.image_container, text="", cursor="crosshair")
         self.display_label.place(relx=0.5, rely=0.5, anchor="center")
 
-        # Magnifier Overlay
-        self.magnifier_label = ctk.CTkLabel(self.image_container, text="", fg_color="transparent",
-                                            width=self.magnifier_size, height=self.magnifier_size)
-
-        # Value Text Overlay (Dynamic info next to magnifier)
-        self.value_info_label = ctk.CTkLabel(self.image_container, text="", font=ctk.CTkFont(size=11, weight="bold"),
-                                             fg_color="#2c3e50", text_color="white", corner_radius=4)
+        self.magnifier_label = ctk.CTkLabel(self.image_container, text="", fg_color="transparent")
+        self.value_info_label = ctk.CTkLabel(self.image_container, text="", font=ctk.CTkFont(size=12, weight="bold"),
+                                             fg_color="#3498db", text_color="white", corner_radius=4)
 
         self.magnifier_label.place_forget()
         self.value_info_label.place_forget()
 
-        # Events
         self.image_container.bind("<Configure>", self.on_resize)
         self.display_label.bind("<Motion>", self.update_magnifier)
         self.display_label.bind("<Button-1>", self.on_image_click)
@@ -101,13 +105,13 @@ class FlycastViewer(ctk.CTk):
 
     def add_view_button(self, parent, text):
         btn = ctk.CTkButton(parent, text=text, command=lambda t=text: self.update_view_mode(t),
-                            anchor="w", height=32, fg_color="transparent", border_width=1)
-        btn.pack(fill="x", pady=2)
+                            anchor="w", height=35, fg_color="transparent", border_width=1, border_color="#444444")
+        btn.pack(fill="x", pady=3)
         return btn
 
     def log(self, text, clear=False):
         if clear: self.info_box.delete("0.0", "end")
-        self.info_box.insert("end", f"{text}\n")
+        self.info_box.insert("end", f"> {text}\n")
         self.info_box.see("end")
 
     def hide_magnifier(self, event=None):
@@ -123,34 +127,45 @@ class FlycastViewer(ctk.CTk):
 
         try:
             input_file = oiio.ImageInput.open(path)
-            if not input_file: raise Exception(f"Erreur: {oiio.geterror()}")
+            if not input_file: raise Exception(f"OIIO Error: {oiio.geterror()}")
 
             spec = input_file.spec()
             self.image_size = (spec.width, spec.height)
-            data = input_file.read_image("half")
+            raw_data = input_file.read_image("half")
             input_file.close()
 
-            self.current_exr_data = {name: data[:, :, i] for i, name in enumerate(spec.channelnames)}
+            self.current_exr_data = {name: raw_data[:, :, i] for i, name in enumerate(spec.channelnames)}
             self.available_channels = spec.channelnames
 
-            self.log(f"Fichier: {os.path.basename(path)}", clear=True)
-            self.log(f"Résolution: {spec.width}x{spec.height}")
+            self.log(f"Fichier : {os.path.basename(path)}", clear=True)
+            self.log(f"Résolution : {spec.width}x{spec.height}")
 
             for btn in self.channel_buttons: btn.destroy()
             self.channel_buttons = []
 
-            for name in self.available_channels:
-                btn = ctk.CTkButton(self.channels_scroll, text=name,
+            for name in sorted(self.available_channels):
+                is_std = name in STANDARD_CHANNELS
+                bg_color = "#2980b9" if is_std else "#34495e"
+                hover_color = "#3498db" if is_std else "#3e5871"
+                border_color = "#3498db" if is_std else "transparent"
+
+                btn = ctk.CTkButton(self.channels_scroll,
+                                    text=f" {'★' if is_std else ' '} {name}",
                                     command=lambda n=name: self.update_view_mode(n),
-                                    anchor="w", height=28, font=ctk.CTkFont(size=11),
-                                    fg_color="#34495e")
-                btn.pack(fill="x", pady=1)
+                                    anchor="w",
+                                    height=30,
+                                    font=ctk.CTkFont(size=11, weight="bold" if is_std else "normal"),
+                                    fg_color=bg_color,
+                                    hover_color=hover_color,
+                                    border_width=2 if is_std else 0,
+                                    border_color=border_color)
+                btn.pack(fill="x", pady=2)
                 self.channel_buttons.append(btn)
 
             self.update_view_mode("Composite (RGB)")
 
         except Exception as e:
-            messagebox.showerror("Erreur", str(e))
+            messagebox.showerror("Erreur de lecture", str(e))
 
     def update_view_mode(self, mode):
         if not self.current_exr_data: return
@@ -164,8 +179,11 @@ class FlycastViewer(ctk.CTk):
                 if c in self.current_exr_data: img_np[:, :, i] = self.current_exr_data[c]
 
         elif mode == "Normal Map":
+            # Débiaisage : passage de [-1, 1] vers [0, 1] pour l'affichage visuel (RGB)
             for i, c in enumerate(['Normal.X', 'Normal.Y', 'Normal.Z']):
-                if c in self.current_exr_data: img_np[:, :, i] = (self.current_exr_data[c] + 1.0) / 2.0
+                if c in self.current_exr_data:
+                    # Formule : (val + 1.0) * 0.5
+                    img_np[:, :, i] = (self.current_exr_data[c] + 1.0) / 2.0
 
         elif mode == "Albedo + AO":
             ao = self.current_exr_data.get('SSAO.AO', np.ones((h, w)))
@@ -188,8 +206,7 @@ class FlycastViewer(ctk.CTk):
 
         cont_w = self.image_container.winfo_width()
         cont_h = self.image_container.winfo_height()
-
-        if cont_w < 10 or cont_h < 10: return
+        if cont_w < 50 or cont_h < 50: return
 
         self.full_pil_image = Image.fromarray(self.last_numpy_image)
         img_w, img_h = self.full_pil_image.size
@@ -203,31 +220,34 @@ class FlycastViewer(ctk.CTk):
             self.display_label.configure(image=ctk_img)
 
     def get_pixel_raw_values(self, px, py):
-        """Récupère les vraies valeurs flottantes de l'EXR pour un pixel donné."""
         if not self.current_exr_data: return "N/A"
-
-        values = []
-        if self.current_view_mode == "Composite (RGB)":
-            for c in ['Albedo.R', 'Albedo.G', 'Albedo.B']:
-                if c in self.current_exr_data: values.append(f"{self.current_exr_data[c][py, px]:.3f}")
-            return f"RGB({', '.join(values)})"
-
-        elif self.current_view_mode == "Normal Map":
-            for c in ['Normal.X', 'Normal.Y', 'Normal.Z']:
-                if c in self.current_exr_data: values.append(f"{self.current_exr_data[c][py, px]:.3f}")
-            return f"XYZ({', '.join(values)})"
-
-        elif self.current_view_mode in self.current_exr_data:
-            val = self.current_exr_data[self.current_view_mode][py, px]
-            return f"{val:.4f}"
-
+        try:
+            if self.current_view_mode == "Composite (RGB)":
+                res = []
+                for c in ['Albedo.R', 'Albedo.G', 'Albedo.B']:
+                    if c in self.current_exr_data: res.append(f"{self.current_exr_data[c][py, px]:.3f}")
+                return f"RGB({', '.join(res)})"
+            elif self.current_view_mode == "Normal Map":
+                res = []
+                for c in ['Normal.X', 'Normal.Y', 'Normal.Z']:
+                    if c in self.current_exr_data: res.append(f"{self.current_exr_data[c][py, px]:.3f}")
+                return f"RawNorm({', '.join(res)})"
+            elif self.current_view_mode in self.current_exr_data:
+                val = self.current_exr_data[self.current_view_mode][py, px]
+                if self.current_view_mode == "Material.ID":
+                    mat_id = int(round(val * 255.0))
+                    return f"ID: {mat_id} (Val: {val:.4f})"
+                return f"{val:.4f}"
+        except Exception:
+            pass
         return "N/A"
 
     def on_image_click(self, event):
         if self.current_pixel_value != "N/A":
-            display_text = f"[{self.current_view_mode}] {self.current_pixel_value}"
+            display_text = f"{self.current_view_mode}: {self.current_pixel_value}"
             self.inspect_entry.delete(0, "end")
             self.inspect_entry.insert(0, display_text)
+            self.log(f"Inspecté : {display_text}")
 
     def update_magnifier(self, event):
         if not self.magnifier_var.get() or self.full_pil_image is None:
@@ -236,18 +256,15 @@ class FlycastViewer(ctk.CTk):
 
         x, y = event.x, event.y
         disp_w, disp_h = self.display_size
-
         orig_w, orig_h = self.full_pil_image.size
         orig_x = int((x / disp_w) * orig_w)
         orig_y = int((y / disp_h) * orig_h)
 
-        # Update current value for the label and click event
         if 0 <= orig_x < orig_w and 0 <= orig_y < orig_h:
             self.current_pixel_value = self.get_pixel_raw_values(orig_x, orig_y)
         else:
             self.current_pixel_value = "N/A"
 
-        # Zoom 1:1 Logic
         m_half = self.magnifier_size // 2
         left = max(0, orig_x - m_half)
         top = max(0, orig_y - m_half)
@@ -263,10 +280,10 @@ class FlycastViewer(ctk.CTk):
 
             draw = ImageDraw.Draw(zoomed)
             mid = self.magnifier_size // 2
-            line_len = 8
+            length = 12
             for color, width in [("black", 3), ("white", 1)]:
-                draw.line([(mid - line_len, mid), (mid + line_len, mid)], fill=color, width=width)
-                draw.line([(mid, mid - line_len), (mid, mid + line_len)], fill=color, width=width)
+                draw.line([(mid - length, mid), (mid + length, mid)], fill=color, width=width)
+                draw.line([(mid, mid - length), (mid, mid + length)], fill=color, width=width)
 
             zoomed = ImageOps.expand(zoomed, border=2, fill='#3498db')
             zoom_ctk = ctk.CTkImage(light_image=zoomed, dark_image=zoomed,
@@ -275,19 +292,17 @@ class FlycastViewer(ctk.CTk):
             self.magnifier_label.configure(image=zoom_ctk)
             self.value_info_label.configure(text=f" {self.current_pixel_value} ")
 
-            mx = x + self.display_label.winfo_x() + 25
-            my = y + self.display_label.winfo_y() + 25
+            mx = x + self.display_label.winfo_x() + 40
+            my = y + self.display_label.winfo_y() + 40
 
             if mx + self.magnifier_size > self.image_container.winfo_width():
-                mx -= (self.magnifier_size + 50)
+                mx -= (self.magnifier_size + 80)
             if my + self.magnifier_size > self.image_container.winfo_height():
-                my -= (self.magnifier_size + 50)
+                my -= (self.magnifier_size + 80)
 
             self.magnifier_label.place(x=mx, y=my)
-            # Place info text below or above magnifier
-            info_y = my + self.magnifier_size + 10 if my + self.magnifier_size + 40 < self.image_container.winfo_height() else my - 30
+            info_y = my + self.magnifier_size + 15 if my + self.magnifier_size + 50 < self.image_container.winfo_height() else my - 35
             self.value_info_label.place(x=mx, y=info_y)
-
         except Exception:
             self.hide_magnifier()
 
