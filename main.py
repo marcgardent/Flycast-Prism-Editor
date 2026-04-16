@@ -1,20 +1,13 @@
-import sys
 import os
-import threading
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
-from PIL import Image, ImageTk, ImageOps, ImageDraw
+from PIL import Image, ImageOps, ImageDraw
 import numpy as np
-import OpenImageIO as oiio
 from platformdirs import user_pictures_dir
 
-# Liste des canaux définis dans le référentiel technique Flycast
-STANDARD_CHANNELS = [
-    'Albedo.R', 'Albedo.G', 'Albedo.B',
-    'Normal.X', 'Normal.Y', 'Normal.Z',
-    'Depth.Z', 'Material.ID', 'SSAO.AO'
-]
-
+from constants import STANDARD_CHANNELS
+from exr_loader import EXRLoader
+from image_processor import ImageProcessor
 
 class FlycastViewer(ctk.CTk):
     def __init__(self):
@@ -35,15 +28,25 @@ class FlycastViewer(ctk.CTk):
         self.default_dir = user_pictures_dir()
         self.current_pixel_value = "N/A"
 
-        # Gestion du chargement et annulation
+        # Gestion du chargement
         self.is_loading = False
-        self.cancel_event = threading.Event()
+        self.loader = EXRLoader(
+            on_success=lambda *args: self.after(0, self._on_load_success, *args),
+            on_error=lambda err: self.after(0, self._on_load_error, err),
+            on_cancelled=lambda: self.after(0, self._on_load_cancelled)
+        )
 
         # Configuration de la grille
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # --- BARRE LATÉRALE (SIDEBAR) ---
+        self._setup_sidebar()
+        self._setup_image_area()
+
+        # Propre fermeture
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def _setup_sidebar(self):
         self.sidebar = ctk.CTkFrame(self, width=350, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_propagate(False)
@@ -72,11 +75,11 @@ class FlycastViewer(ctk.CTk):
         ctk.CTkLabel(self.sidebar, text="MODES COMPOSITES", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(25, 5))
         self.composite_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         self.composite_frame.pack(fill="x", padx=15)
-        self.add_view_button(self.composite_frame, "Composite (RGB)")
-        self.add_view_button(self.composite_frame, "Normal Map")
-        self.add_view_button(self.composite_frame, "Albedo + AO")
+        self._add_view_button(self.composite_frame, "Composite (RGB)")
+        self._add_view_button(self.composite_frame, "Normal Map")
+        self._add_view_button(self.composite_frame, "Albedo + AO")
 
-        # Liste des canaux avec distinction de couleur
+        # Liste des canaux
         ctk.CTkLabel(self.sidebar, text="CANAUX (BLEU = STANDARD)", font=ctk.CTkFont(size=13, weight="bold")).pack(
             pady=(25, 5))
         self.channels_scroll = ctk.CTkScrollableFrame(self.sidebar, height=350, fg_color="transparent")
@@ -89,7 +92,7 @@ class FlycastViewer(ctk.CTk):
         self.info_box.pack(side="bottom", fill="x", padx=20, pady=20)
         self.info_box.insert("0.0", "En attente de chargement...")
 
-        # --- ZONE D'AFFICHAGE ---
+    def _setup_image_area(self):
         self.image_container = ctk.CTkFrame(self, fg_color="#050505", corner_radius=0)
         self.image_container.grid(row=0, column=1, sticky="nsew")
 
@@ -106,7 +109,6 @@ class FlycastViewer(ctk.CTk):
         self.progress_bar.pack(pady=(0, 15), padx=30)
         self.progress_bar.configure(mode="indeterminate")
 
-        # Bouton Annuler
         self.cancel_button = ctk.CTkButton(self.loading_overlay, text="ANNULER", command=self.cancel_loading,
                                            fg_color="#c0392b", hover_color="#e74c3c", width=100, height=28)
         self.cancel_button.pack(pady=(0, 20))
@@ -116,18 +118,12 @@ class FlycastViewer(ctk.CTk):
                                              fg_color="#3498db", text_color="white", corner_radius=4)
 
         self.hide_loading()
-        self.magnifier_label.place_forget()
-        self.value_info_label.place_forget()
-
         self.image_container.bind("<Configure>", self.on_resize)
         self.display_label.bind("<Motion>", self.update_magnifier)
         self.display_label.bind("<Button-1>", self.on_image_click)
         self.display_label.bind("<Leave>", self.hide_magnifier)
 
-        # Propre fermeture
-        self.protocol("WM_DELETE_WINDOW", self.on_closing)
-
-    def add_view_button(self, parent, text):
+    def _add_view_button(self, parent, text):
         btn = ctk.CTkButton(parent, text=text, command=lambda t=text: self.safe_update_view_mode(t),
                             anchor="w", height=35, fg_color="transparent", border_width=1, border_color="#444444")
         btn.pack(fill="x", pady=3)
@@ -140,7 +136,6 @@ class FlycastViewer(ctk.CTk):
 
     def show_loading(self, message="TRAITEMENT EN COURS..."):
         self.is_loading = True
-        self.cancel_event.clear()
         self.loading_label.configure(text=message)
         self.open_button.configure(state="disabled", text="PATIENTEZ...")
         self.loading_overlay.place(relx=0.5, rely=0.5, anchor="center")
@@ -154,11 +149,11 @@ class FlycastViewer(ctk.CTk):
 
     def cancel_loading(self):
         if self.is_loading:
-            self.cancel_event.set()
+            self.loader.cancel()
             self.log("Demande d'annulation envoyée...")
 
     def on_closing(self):
-        self.cancel_event.set()
+        self.loader.cancel()
         self.destroy()
 
     def hide_magnifier(self, event=None):
@@ -167,55 +162,10 @@ class FlycastViewer(ctk.CTk):
 
     def open_file(self):
         if self.is_loading: return
-
-        path = filedialog.askopenfilename(
-            initialdir=self.default_dir,
-            filetypes=[("OpenEXR Files", "*.exr")]
-        )
-        if not path: return
-
-        self.show_loading("CHARGEMENT DE L'EXR...")
-        threading.Thread(target=self._load_exr_thread, args=(path,), daemon=True).start()
-
-    def _load_exr_thread(self, path):
-        """Fonction exécutée en arrière-plan pour ne pas bloquer l'UI"""
-        try:
-            input_file = oiio.ImageInput.open(path)
-            if not input_file:
-                raise Exception(f"Impossible d'ouvrir le fichier : {oiio.geterror()}")
-
-            if self.cancel_event.is_set():
-                input_file.close()
-                self.after(0, self._on_load_cancelled)
-                return
-
-            spec = input_file.spec()
-            w, h = spec.width, spec.height
-
-            # Lecture des données
-            raw_data = input_file.read_image("half")
-            input_file.close()
-
-            if raw_data is None:
-                raise Exception("Erreur lors de la lecture des pixels du fichier EXR.")
-
-            if self.cancel_event.is_set():
-                self.after(0, self._on_load_cancelled)
-                return
-
-            # Extraction des canaux
-            channels_data = {name: raw_data[:, :, i] for i, name in enumerate(spec.channelnames)}
-            available_channels = spec.channelnames
-
-            self.after(0, lambda: self._on_load_success(path, w, h, channels_data, available_channels))
-
-        except Exception as e:
-            # Gestion explicite de l'erreur pour éviter le blocage infini
-            self.after(0, lambda err=str(e): self._on_load_error(err))
-
-    def _on_load_cancelled(self):
-        self.hide_loading()
-        self.log("Chargement annulé.")
+        path = filedialog.askopenfilename(initialdir=self.default_dir, filetypes=[("OpenEXR Files", "*.exr")])
+        if path:
+            self.show_loading("CHARGEMENT DE L'EXR...")
+            self.loader.load(path)
 
     def _on_load_success(self, path, w, h, channels_data, available_channels):
         self.image_size = (w, h)
@@ -231,12 +181,9 @@ class FlycastViewer(ctk.CTk):
         for name in sorted(self.available_channels):
             is_std = name in STANDARD_CHANNELS
             bg_color = "#2980b9" if is_std else "#34495e"
-
-            btn = ctk.CTkButton(self.channels_scroll,
-                                text=f" {'★' if is_std else ' '} {name}",
+            btn = ctk.CTkButton(self.channels_scroll, text=f" {'★' if is_std else ' '} {name}",
                                 command=lambda n=name: self.safe_update_view_mode(n),
-                                anchor="w", height=30,
-                                fg_color=bg_color)
+                                anchor="w", height=30, fg_color=bg_color)
             btn.pack(fill="x", pady=2)
             self.channel_buttons.append(btn)
 
@@ -248,11 +195,13 @@ class FlycastViewer(ctk.CTk):
         self.log(f"ERREUR : {error_msg}")
         messagebox.showerror("Erreur Critique", f"Le chargement a échoué :\n{error_msg}")
 
+    def _on_load_cancelled(self):
+        self.hide_loading()
+        self.log("Chargement annulé.")
+
     def safe_update_view_mode(self, mode):
-        """Lance la mise à jour de la vue avec un petit loader si nécessaire"""
         if not self.current_exr_data or self.is_loading: return
         self.show_loading(f"CALCUL : {mode}")
-        # On utilise after(10) pour laisser l'UI afficher le loader avant de lancer le calcul lourd
         self.after(10, lambda: self._process_view_mode(mode))
 
     def _process_view_mode(self, mode):
@@ -263,28 +212,7 @@ class FlycastViewer(ctk.CTk):
 
     def update_view_mode(self, mode):
         self.current_view_mode = mode
-        w, h = self.image_size
-        img_np = np.zeros((h, w, 3), dtype=np.float32)
-
-        if mode == "Composite (RGB)":
-            for i, c in enumerate(['Albedo.R', 'Albedo.G', 'Albedo.B']):
-                if c in self.current_exr_data: img_np[:, :, i] = self.current_exr_data[c]
-
-        elif mode == "Normal Map":
-            for i, c in enumerate(['Normal.X', 'Normal.Y', 'Normal.Z']):
-                if c in self.current_exr_data:
-                    img_np[:, :, i] = (self.current_exr_data[c] + 1.0) / 2.0
-
-        elif mode == "Albedo + AO":
-            ao = self.current_exr_data.get('SSAO.AO', np.ones((h, w)))
-            for i, c in enumerate(['Albedo.R', 'Albedo.G', 'Albedo.B']):
-                if c in self.current_exr_data: img_np[:, :, i] = self.current_exr_data[c] * ao
-
-        elif mode in self.current_exr_data:
-            chan = self.current_exr_data[mode]
-            img_np = np.stack([chan, chan, chan], axis=-1)
-
-        self.last_numpy_image = np.clip(img_np * 255, 0, 255).astype(np.uint8)
+        self.last_numpy_image = ImageProcessor.process_view_mode(mode, self.image_size, self.current_exr_data)
         self.refresh_image_display()
 
     def on_resize(self, event=None):
@@ -293,44 +221,18 @@ class FlycastViewer(ctk.CTk):
 
     def refresh_image_display(self):
         if self.last_numpy_image is None: return
-
-        cont_w = self.image_container.winfo_width()
-        cont_h = self.image_container.winfo_height()
+        cont_w, cont_h = self.image_container.winfo_width(), self.image_container.winfo_height()
         if cont_w < 50 or cont_h < 50: return
 
         self.full_pil_image = Image.fromarray(self.last_numpy_image)
         img_w, img_h = self.full_pil_image.size
         ratio = min(cont_w / img_w, cont_h / img_h)
-
         self.display_size = (int(img_w * ratio), int(img_h * ratio))
 
         if self.display_size[0] > 0 and self.display_size[1] > 0:
             resized_pil = self.full_pil_image.resize(self.display_size, Image.Resampling.LANCZOS)
             ctk_img = ctk.CTkImage(light_image=resized_pil, dark_image=resized_pil, size=self.display_size)
             self.display_label.configure(image=ctk_img)
-
-    def get_pixel_raw_values(self, px, py):
-        if not self.current_exr_data: return "N/A"
-        try:
-            if self.current_view_mode == "Composite (RGB)":
-                res = []
-                for c in ['Albedo.R', 'Albedo.G', 'Albedo.B']:
-                    if c in self.current_exr_data: res.append(f"{self.current_exr_data[c][py, px]:.3f}")
-                return f"RGB({', '.join(res)})"
-            elif self.current_view_mode == "Normal Map":
-                res = []
-                for c in ['Normal.X', 'Normal.Y', 'Normal.Z']:
-                    if c in self.current_exr_data: res.append(f"{self.current_exr_data[c][py, px]:.3f}")
-                return f"RawNorm({', '.join(res)})"
-            elif self.current_view_mode in self.current_exr_data:
-                val = self.current_exr_data[self.current_view_mode][py, px]
-                if self.current_view_mode == "Material.ID":
-                    mat_id = int(round(val * 255.0))
-                    return f"ID: {mat_id} (Val: {val:.4f})"
-                return f"{val:.4f}"
-        except Exception:
-            pass
-        return "N/A"
 
     def on_image_click(self, event):
         if self.current_pixel_value != "N/A":
@@ -347,48 +249,38 @@ class FlycastViewer(ctk.CTk):
         x, y = event.x, event.y
         disp_w, disp_h = self.display_size
         orig_w, orig_h = self.full_pil_image.size
-        orig_x = int((x / disp_w) * orig_w)
-        orig_y = int((y / disp_h) * orig_h)
+        orig_x, orig_y = int((x / disp_w) * orig_w), int((y / disp_h) * orig_h)
 
         if 0 <= orig_x < orig_w and 0 <= orig_y < orig_h:
-            self.current_pixel_value = self.get_pixel_raw_values(orig_x, orig_y)
+            self.current_pixel_value = ImageProcessor.get_pixel_raw_values(self.current_view_mode, orig_x, orig_y, self.current_exr_data)
         else:
             self.current_pixel_value = "N/A"
 
         m_half = self.magnifier_size // 2
-        left = max(0, orig_x - m_half)
-        top = max(0, orig_y - m_half)
-        right = min(orig_w, orig_x + m_half)
-        bottom = min(orig_h, orig_y + m_half)
+        left, top = max(0, orig_x - m_half), max(0, orig_y - m_half)
+        right, bottom = min(orig_w, orig_x + m_half), min(orig_h, orig_y + m_half)
 
         try:
             crop = self.full_pil_image.crop((left, top, right, bottom))
             zoomed = Image.new("RGB", (self.magnifier_size, self.magnifier_size), (0, 0, 0))
-            paste_x = max(0, m_half - orig_x)
-            paste_y = max(0, m_half - orig_y)
-            zoomed.paste(crop, (paste_x, paste_y))
+            zoomed.paste(crop, (max(0, m_half - orig_x), max(0, m_half - orig_y)))
 
             draw = ImageDraw.Draw(zoomed)
-            mid = self.magnifier_size // 2
-            length = 12
+            mid, length = self.magnifier_size // 2, 12
             for color, width in [("black", 3), ("white", 1)]:
                 draw.line([(mid - length, mid), (mid + length, mid)], fill=color, width=width)
                 draw.line([(mid, mid - length), (mid, mid + length)], fill=color, width=width)
 
             zoomed = ImageOps.expand(zoomed, border=2, fill='#3498db')
-            zoom_ctk = ctk.CTkImage(light_image=zoomed, dark_image=zoomed,
-                                    size=(self.magnifier_size + 4, self.magnifier_size + 4))
+            zoom_ctk = ctk.CTkImage(light_image=zoomed, dark_image=zoomed, size=(self.magnifier_size + 4, self.magnifier_size + 4))
 
             self.magnifier_label.configure(image=zoom_ctk)
             self.value_info_label.configure(text=f" {self.current_pixel_value} ")
 
             mx = x + self.display_label.winfo_x() + 40
             my = y + self.display_label.winfo_y() + 40
-
-            if mx + self.magnifier_size > self.image_container.winfo_width():
-                mx -= (self.magnifier_size + 80)
-            if my + self.magnifier_size > self.image_container.winfo_height():
-                my -= (self.magnifier_size + 80)
+            if mx + self.magnifier_size > self.image_container.winfo_width(): mx -= (self.magnifier_size + 80)
+            if my + self.magnifier_size > self.image_container.winfo_height(): my -= (self.magnifier_size + 80)
 
             self.magnifier_label.place(x=mx, y=my)
             info_y = my + self.magnifier_size + 15 if my + self.magnifier_size + 50 < self.image_container.winfo_height() else my - 35
@@ -396,11 +288,6 @@ class FlycastViewer(ctk.CTk):
         except Exception:
             self.hide_magnifier()
 
-
-def main():
+if __name__ == "__main__":
     app = FlycastViewer()
     app.mainloop()
-
-
-if __name__ == "__main__":
-    main()
