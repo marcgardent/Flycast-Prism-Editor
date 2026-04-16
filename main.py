@@ -2,7 +2,7 @@ import sys
 import os
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageOps
 import numpy as np
 import OpenImageIO as oiio
 
@@ -11,150 +11,220 @@ class FlycastViewer(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Flycast GBuffer Viewer")
-        self.geometry("1100x800")
+        self.title("Flycast G-Buffer Viewer")
+        self.geometry("1200x850")
 
-        # État de l'application
-        self.current_exr_data = {}  # Stockage des channels numpy
+        # Application State
+        self.current_exr_data = {}
         self.available_channels = []
         self.image_size = (0, 0)
+        self.last_numpy_image = None
+        self.current_view_mode = "Composite (RGB)"
+        self.zoom_factor = 4
+        self.magnifier_size = 200
 
         # UI Layout
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Sidebar
-        self.sidebar = ctk.CTkFrame(self, width=250, corner_radius=0)
+        # --- SIDEBAR ---
+        self.sidebar = ctk.CTkFrame(self, width=280, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
+        self.sidebar.grid_propagate(False)
 
-        self.logo_label = ctk.CTkLabel(self.sidebar, text="FLYCAST G-BUFFER", font=ctk.CTkFont(size=18, weight="bold"))
-        self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 20))
+        self.logo_label = ctk.CTkLabel(self.sidebar, text="FLYCAST G-BUFFER", font=ctk.CTkFont(size=20, weight="bold"))
+        self.logo_label.pack(pady=(20, 20), padx=20)
 
-        self.open_button = ctk.CTkButton(self.sidebar, text="Ouvrir EXR", command=self.open_file)
-        self.open_button.grid(row=1, column=0, padx=20, pady=10)
+        self.open_button = ctk.CTkButton(self.sidebar, text="OPEN EXR", command=self.open_file, fg_color="#2c3e50",
+                                         hover_color="#34495e")
+        self.open_button.pack(pady=10, padx=20, fill="x")
 
-        # Sélections de vues
-        self.view_label = ctk.CTkLabel(self.sidebar, text="Modes de Vue Composites:", font=ctk.CTkFont(weight="bold"))
-        self.view_label.grid(row=2, column=0, padx=20, pady=(20, 5))
+        # Tools Section
+        ctk.CTkLabel(self.sidebar, text="TOOLS", font=ctk.CTkFont(size=12, weight="bold")).pack(pady=(20, 5))
+        self.magnifier_var = ctk.BooleanVar(value=True)
+        self.magnifier_switch = ctk.CTkSwitch(self.sidebar, text="Magnifier", variable=self.magnifier_var)
+        self.magnifier_switch.pack(pady=5, padx=20, anchor="w")
 
-        self.mode_menu = ctk.CTkOptionMenu(self.sidebar,
-                                           values=["Complet (RGB)", "Normal Map", "Albedo + AO"],
-                                           command=self.update_display)
-        self.mode_menu.grid(row=3, column=0, padx=20, pady=10)
+        # Composite Modes Section
+        ctk.CTkLabel(self.sidebar, text="COMPOSITE MODES", font=ctk.CTkFont(size=12, weight="bold")).pack(pady=(20, 5))
 
-        self.chan_label = ctk.CTkLabel(self.sidebar, text="Canaux Individuels:", font=ctk.CTkFont(weight="bold"))
-        self.chan_label.grid(row=4, column=0, padx=20, pady=(20, 5))
+        self.composite_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        self.composite_frame.pack(fill="x", padx=10)
 
-        self.single_chan_menu = ctk.CTkOptionMenu(self.sidebar,
-                                                  values=["Aucun"],
-                                                  command=self.display_single_channel)
-        self.single_chan_menu.grid(row=5, column=0, padx=20, pady=10)
+        self.add_view_button(self.composite_frame, "Composite (RGB)")
+        self.add_view_button(self.composite_frame, "Normal Map")
+        self.add_view_button(self.composite_frame, "Albedo + AO")
 
-        # Infos techniques
-        self.info_box = ctk.CTkTextbox(self.sidebar, height=200, width=210, font=ctk.CTkFont(size=11))
-        self.info_box.grid(row=6, column=0, padx=20, pady=20)
-        self.info_box.insert("0.0", "En attente de fichier...")
+        # Individual Channels Section
+        ctk.CTkLabel(self.sidebar, text="INDIVIDUAL CHANNELS", font=ctk.CTkFont(size=12, weight="bold")).pack(
+            pady=(20, 5))
 
-        # Zone d'affichage
-        self.image_container = ctk.CTkScrollableFrame(self, corner_radius=0, fg_color="transparent")
-        self.image_container.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+        self.channels_scroll = ctk.CTkScrollableFrame(self.sidebar, height=300, fg_color="transparent")
+        self.channels_scroll.pack(fill="both", expand=True, padx=10, pady=5)
+        self.channel_buttons = []
 
-        self.display_label = ctk.CTkLabel(self.image_container, text="")
-        self.display_label.pack(expand=True, fill="both")
+        # Info Console
+        self.info_box = ctk.CTkTextbox(self.sidebar, height=120, font=ctk.CTkFont(size=11), fg_color="#1a1a1a")
+        self.info_box.pack(side="bottom", fill="x", padx=15, pady=15)
+        self.info_box.insert("0.0", "Waiting for file...")
+
+        # --- DISPLAY AREA ---
+        self.image_container = ctk.CTkFrame(self, fg_color="#101010", corner_radius=0)
+        self.image_container.grid(row=0, column=1, sticky="nsew")
+
+        self.display_label = ctk.CTkLabel(self.image_container, text="", cursor="crosshair")
+        self.display_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        # Magnifier Overlay
+        self.magnifier_label = ctk.CTkLabel(self.image_container, text="", fg_color="transparent",
+                                            width=self.magnifier_size, height=self.magnifier_size)
+        self.magnifier_label.place_forget()
+
+        # Events
+        self.image_container.bind("<Configure>", self.on_resize)
+        self.display_label.bind("<Motion>", self.update_magnifier)
+        self.display_label.bind("<Leave>", lambda e: self.magnifier_label.place_forget())
+
+    def add_view_button(self, parent, text):
+        btn = ctk.CTkButton(parent, text=text, command=lambda t=text: self.update_view_mode(t),
+                            anchor="w", height=32, fg_color="transparent", border_width=1)
+        btn.pack(fill="x", pady=2)
+        return btn
 
     def log(self, text, clear=False):
         if clear: self.info_box.delete("0.0", "end")
         self.info_box.insert("end", f"{text}\n")
+        self.info_box.see("end")
 
     def open_file(self):
         path = filedialog.askopenfilename(filetypes=[("OpenEXR Files", "*.exr")])
-        if not path:
-            return
+        if not path: return
 
         try:
             input_file = oiio.ImageInput.open(path)
-            if not input_file:
-                raise Exception(f"Impossible d'ouvrir le fichier: {oiio.geterror()}")
+            if not input_file: raise Exception(f"Error: {oiio.geterror()}")
 
             spec = input_file.spec()
             self.image_size = (spec.width, spec.height)
-
-            # Lecture de tous les canaux
             data = input_file.read_image("half")
             input_file.close()
 
-            # Mapping des noms de canaux
-            self.current_exr_data = {}
+            self.current_exr_data = {name: data[:, :, i] for i, name in enumerate(spec.channelnames)}
             self.available_channels = spec.channelnames
 
-            for i, name in enumerate(spec.channelnames):
-                self.current_exr_data[name] = data[:, :, i]
+            self.log(f"File: {os.path.basename(path)}", clear=True)
+            self.log(f"Resolution: {spec.width}x{spec.height}")
 
-            self.log(f"Fichier: {os.path.basename(path)}", clear=True)
-            self.log(f"Résolution: {spec.width}x{spec.height}")
-            self.log(f"Canaux: {len(self.available_channels)}")
+            # Rebuild channel buttons
+            for btn in self.channel_buttons: btn.destroy()
+            self.channel_buttons = []
 
-            # Mise à jour du menu des canaux
-            self.single_chan_menu.configure(values=self.available_channels)
-            self.update_display("Complet (RGB)")
+            for name in self.available_channels:
+                btn = ctk.CTkButton(self.channels_scroll, text=name,
+                                    command=lambda n=name: self.update_view_mode(n),
+                                    anchor="w", height=28, font=ctk.CTkFont(size=11),
+                                    fg_color="#34495e")
+                btn.pack(fill="x", pady=1)
+                self.channel_buttons.append(btn)
+
+            self.update_view_mode("Composite (RGB)")
 
         except Exception as e:
-            messagebox.showerror("Erreur de lecture", str(e))
+            messagebox.showerror("Error", str(e))
 
-    def update_display(self, mode):
+    def update_view_mode(self, mode):
         if not self.current_exr_data: return
+        self.current_view_mode = mode
 
         w, h = self.image_size
         img_np = np.zeros((h, w, 3), dtype=np.float32)
 
-        if mode == "Complet (RGB)":
-            # Reconstruction Albedo.R, G, B
+        if mode == "Composite (RGB)":
             for i, c in enumerate(['Albedo.R', 'Albedo.G', 'Albedo.B']):
-                if c in self.current_exr_data:
-                    img_np[:, :, i] = self.current_exr_data[c]
+                if c in self.current_exr_data: img_np[:, :, i] = self.current_exr_data[c]
 
         elif mode == "Normal Map":
-            # Normal.X, Y, Z (Mappage -1,1 vers 0,1 pour affichage)
             for i, c in enumerate(['Normal.X', 'Normal.Y', 'Normal.Z']):
-                if c in self.current_exr_data:
-                    img_np[:, :, i] = (self.current_exr_data[c] + 1.0) / 2.0
+                if c in self.current_exr_data: img_np[:, :, i] = (self.current_exr_data[c] + 1.0) / 2.0
 
         elif mode == "Albedo + AO":
-            # Multiplication Albedo par SSAO.AO
             ao = self.current_exr_data.get('SSAO.AO', np.ones((h, w)))
             for i, c in enumerate(['Albedo.R', 'Albedo.G', 'Albedo.B']):
-                if c in self.current_exr_data:
-                    img_np[:, :, i] = self.current_exr_data[c] * ao
+                if c in self.current_exr_data: img_np[:, :, i] = self.current_exr_data[c] * ao
 
-        self.render_numpy(img_np)
+        elif mode in self.current_exr_data:
+            chan = self.current_exr_data[mode]
+            img_np = np.stack([chan, chan, chan], axis=-1)
 
-    def display_single_channel(self, channel_name):
-        if channel_name not in self.current_exr_data: return
+        self.last_numpy_image = np.clip(img_np * 255, 0, 255).astype(np.uint8)
+        self.refresh_image_display()
 
-        chan_data = self.current_exr_data[channel_name]
-        # On duplique sur les 3 canaux pour faire du gris
-        img_np = np.stack([chan_data, chan_data, chan_data], axis=-1)
+    def on_resize(self, event=None):
+        if self.last_numpy_image is not None:
+            self.refresh_image_display()
 
-        # Cas spécial pour Material.ID : on peut vouloir le coloriser ou le normaliser
-        if channel_name == "Material.ID":
-            self.log("Note: Material.ID visualisé en RAW [0-1]")
+    def refresh_image_display(self):
+        if self.last_numpy_image is None: return
 
-        self.render_numpy(img_np)
+        cont_w = self.image_container.winfo_width()
+        cont_h = self.image_container.winfo_height()
 
-    def render_numpy(self, img_np):
-        # Clipping et conversion en 8 bits pour PIL
-        img_np = np.clip(img_np * 255, 0, 255).astype(np.uint8)
-        pil_img = Image.fromarray(img_np)
+        if cont_w < 10 or cont_h < 10: return
 
-        # Redimensionnement auto pour la fenêtre si trop grand
-        max_w, max_h = 1200, 800
-        ratio = min(max_w / pil_img.width, max_h / pil_img.height)
-        if ratio < 1:
-            new_size = (int(pil_img.width * ratio), int(pil_img.height * ratio))
-            pil_img = pil_img.resize(new_size, Image.LANCZOS)
+        self.full_pil_image = Image.fromarray(self.last_numpy_image)
+        img_w, img_h = self.full_pil_image.size
+        ratio = min(cont_w / img_w, cont_h / img_h)
 
-        ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=pil_img.size)
-        self.display_label.configure(image=ctk_img, text="")
+        self.display_size = (int(img_w * ratio), int(img_h * ratio))
+
+        if self.display_size[0] > 0 and self.display_size[1] > 0:
+            resized_pil = self.full_pil_image.resize(self.display_size, Image.Resampling.LANCZOS)
+            ctk_img = ctk.CTkImage(light_image=resized_pil, dark_image=resized_pil, size=self.display_size)
+            self.display_label.configure(image=ctk_img)
+
+    def update_magnifier(self, event):
+        if not self.magnifier_var.get() or self.last_numpy_image is None:
+            self.magnifier_label.place_forget()
+            return
+
+        # Coordinates relative to the displayed image
+        x, y = event.x, event.y
+        disp_w, disp_h = self.display_size
+
+        # Mapping to original resolution
+        orig_w, orig_h = self.full_pil_image.size
+        orig_x = int((x / disp_w) * orig_w)
+        orig_y = int((y / disp_h) * orig_h)
+
+        # Define crop area for magnifier
+        m_half = self.magnifier_size // (2 * self.zoom_factor)
+        left = max(0, orig_x - m_half)
+        top = max(0, orig_y - m_half)
+        right = min(orig_w, orig_x + m_half)
+        bottom = min(orig_h, orig_y + m_half)
+
+        # Create zoomed image
+        crop = self.full_pil_image.crop((left, top, right, bottom))
+        zoomed = crop.resize((self.magnifier_size, self.magnifier_size), Image.Resampling.NEAREST)
+
+        # Add a border to the magnifier
+        zoomed = ImageOps.expand(zoomed, border=2, fill='#3498db')
+
+        zoom_ctk = ctk.CTkImage(light_image=zoomed, dark_image=zoomed, size=(self.magnifier_size, self.magnifier_size))
+        self.magnifier_label.configure(image=zoom_ctk)
+
+        # Position magnifier near cursor
+        # Offset to prevent magnifier from being under the cursor
+        mx = event.x + self.display_label.winfo_x() + 20
+        my = event.y + self.display_label.winfo_y() + 20
+
+        # Keep magnifier inside container
+        if mx + self.magnifier_size > self.image_container.winfo_width():
+            mx -= (self.magnifier_size + 40)
+        if my + self.magnifier_size > self.image_container.winfo_height():
+            my -= (self.magnifier_size + 40)
+
+        self.magnifier_label.place(x=mx, y=my)
 
 
 def main():
