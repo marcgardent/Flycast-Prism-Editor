@@ -2,9 +2,10 @@ import sys
 import os
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
-from PIL import Image, ImageTk, ImageOps
+from PIL import Image, ImageTk, ImageOps, ImageDraw
 import numpy as np
 import OpenImageIO as oiio
+from platformdirs import user_pictures_dir
 
 
 class FlycastViewer(ctk.CTk):
@@ -19,9 +20,12 @@ class FlycastViewer(ctk.CTk):
         self.available_channels = []
         self.image_size = (0, 0)
         self.last_numpy_image = None
+        self.full_pil_image = None
         self.current_view_mode = "Composite (RGB)"
         self.zoom_factor = 4
         self.magnifier_size = 200
+        self.display_size = (0, 0)
+        self.default_dir = user_pictures_dir()
 
         # UI Layout
         self.grid_columnconfigure(1, weight=1)
@@ -97,7 +101,10 @@ class FlycastViewer(ctk.CTk):
         self.info_box.see("end")
 
     def open_file(self):
-        path = filedialog.askopenfilename(filetypes=[("OpenEXR Files", "*.exr")])
+        path = filedialog.askopenfilename(
+            initialdir=self.default_dir,
+            filetypes=[("OpenEXR Files", "*.exr")]
+        )
         if not path: return
 
         try:
@@ -183,48 +190,60 @@ class FlycastViewer(ctk.CTk):
             self.display_label.configure(image=ctk_img)
 
     def update_magnifier(self, event):
-        if not self.magnifier_var.get() or self.last_numpy_image is None:
+        if not self.magnifier_var.get() or self.full_pil_image is None:
             self.magnifier_label.place_forget()
             return
 
-        # Coordinates relative to the displayed image
+        # Coordinates relative to the displayed image label
         x, y = event.x, event.y
         disp_w, disp_h = self.display_size
 
-        # Mapping to original resolution
+        # Map to original resolution
         orig_w, orig_h = self.full_pil_image.size
         orig_x = int((x / disp_w) * orig_w)
         orig_y = int((y / disp_h) * orig_h)
 
         # Define crop area for magnifier
-        m_half = self.magnifier_size // (2 * self.zoom_factor)
-        left = max(0, orig_x - m_half)
-        top = max(0, orig_y - m_half)
-        right = min(orig_w, orig_x + m_half)
-        bottom = min(orig_h, orig_y + m_half)
+        m_half_orig = (self.magnifier_size // self.zoom_factor) // 2
+        left = max(0, orig_x - m_half_orig)
+        top = max(0, orig_y - m_half_orig)
+        right = min(orig_w, orig_x + m_half_orig)
+        bottom = min(orig_h, orig_y + m_half_orig)
 
-        # Create zoomed image
-        crop = self.full_pil_image.crop((left, top, right, bottom))
-        zoomed = crop.resize((self.magnifier_size, self.magnifier_size), Image.Resampling.NEAREST)
+        try:
+            # Create zoomed image
+            crop = self.full_pil_image.crop((left, top, right, bottom))
+            zoomed = crop.resize((self.magnifier_size, self.magnifier_size), Image.Resampling.NEAREST)
 
-        # Add a border to the magnifier
-        zoomed = ImageOps.expand(zoomed, border=2, fill='#3498db')
+            # Draw crosshair in the center of the magnifier
+            draw = ImageDraw.Draw(zoomed)
+            mid = self.magnifier_size // 2
+            line_len = 10
+            # Draw crosshair (white with black outline for visibility)
+            for color, width in [("black", 3), ("white", 1)]:
+                draw.line([(mid - line_len, mid), (mid + line_len, mid)], fill=color, width=width)
+                draw.line([(mid, mid - line_len), (mid, mid + line_len)], fill=color, width=width)
 
-        zoom_ctk = ctk.CTkImage(light_image=zoomed, dark_image=zoomed, size=(self.magnifier_size, self.magnifier_size))
-        self.magnifier_label.configure(image=zoom_ctk)
+            # Add a border to the magnifier
+            zoomed = ImageOps.expand(zoomed, border=2, fill='#3498db')
 
-        # Position magnifier near cursor
-        # Offset to prevent magnifier from being under the cursor
-        mx = event.x + self.display_label.winfo_x() + 20
-        my = event.y + self.display_label.winfo_y() + 20
+            zoom_ctk = ctk.CTkImage(light_image=zoomed, dark_image=zoomed,
+                                    size=(self.magnifier_size + 4, self.magnifier_size + 4))
+            self.magnifier_label.configure(image=zoom_ctk)
 
-        # Keep magnifier inside container
-        if mx + self.magnifier_size > self.image_container.winfo_width():
-            mx -= (self.magnifier_size + 40)
-        if my + self.magnifier_size > self.image_container.winfo_height():
-            my -= (self.magnifier_size + 40)
+            # Position magnifier with offset from cursor to avoid flickering/event conflicts
+            mx = x + self.display_label.winfo_x() + 20
+            my = y + self.display_label.winfo_y() + 20
 
-        self.magnifier_label.place(x=mx, y=my)
+            # Boundary check to keep magnifier inside container
+            if mx + self.magnifier_size > self.image_container.winfo_width():
+                mx -= (self.magnifier_size + 40)
+            if my + self.magnifier_size > self.image_container.winfo_height():
+                my -= (self.magnifier_size + 40)
+
+            self.magnifier_label.place(x=mx, y=my)
+        except Exception:
+            self.magnifier_label.place_forget()
 
 
 def main():
