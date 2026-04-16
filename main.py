@@ -1,5 +1,6 @@
 import sys
 import os
+import threading
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk, ImageOps, ImageDraw
@@ -33,6 +34,10 @@ class FlycastViewer(ctk.CTk):
         self.display_size = (0, 0)
         self.default_dir = user_pictures_dir()
         self.current_pixel_value = "N/A"
+
+        # Gestion du chargement et annulation
+        self.is_loading = False
+        self.cancel_event = threading.Event()
 
         # Configuration de la grille
         self.grid_columnconfigure(1, weight=1)
@@ -91,10 +96,26 @@ class FlycastViewer(ctk.CTk):
         self.display_label = ctk.CTkLabel(self.image_container, text="", cursor="crosshair")
         self.display_label.place(relx=0.5, rely=0.5, anchor="center")
 
+        # Overlay de chargement
+        self.loading_overlay = ctk.CTkFrame(self.image_container, fg_color="#1a1a1a", corner_radius=10, border_width=2,
+                                            border_color="#3498db")
+        self.loading_label = ctk.CTkLabel(self.loading_overlay, text="TRAITEMENT EN COURS...",
+                                          font=ctk.CTkFont(size=14, weight="bold"))
+        self.loading_label.pack(pady=(20, 10), padx=30)
+        self.progress_bar = ctk.CTkProgressBar(self.loading_overlay, orientation="horizontal", width=250)
+        self.progress_bar.pack(pady=(0, 15), padx=30)
+        self.progress_bar.configure(mode="indeterminate")
+
+        # Bouton Annuler
+        self.cancel_button = ctk.CTkButton(self.loading_overlay, text="ANNULER", command=self.cancel_loading,
+                                           fg_color="#c0392b", hover_color="#e74c3c", width=100, height=28)
+        self.cancel_button.pack(pady=(0, 20))
+
         self.magnifier_label = ctk.CTkLabel(self.image_container, text="", fg_color="transparent")
         self.value_info_label = ctk.CTkLabel(self.image_container, text="", font=ctk.CTkFont(size=12, weight="bold"),
                                              fg_color="#3498db", text_color="white", corner_radius=4)
 
+        self.hide_loading()
         self.magnifier_label.place_forget()
         self.value_info_label.place_forget()
 
@@ -103,8 +124,11 @@ class FlycastViewer(ctk.CTk):
         self.display_label.bind("<Button-1>", self.on_image_click)
         self.display_label.bind("<Leave>", self.hide_magnifier)
 
+        # Propre fermeture
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
     def add_view_button(self, parent, text):
-        btn = ctk.CTkButton(parent, text=text, command=lambda t=text: self.update_view_mode(t),
+        btn = ctk.CTkButton(parent, text=text, command=lambda t=text: self.safe_update_view_mode(t),
                             anchor="w", height=35, fg_color="transparent", border_width=1, border_color="#444444")
         btn.pack(fill="x", pady=3)
         return btn
@@ -114,63 +138,131 @@ class FlycastViewer(ctk.CTk):
         self.info_box.insert("end", f"> {text}\n")
         self.info_box.see("end")
 
+    def show_loading(self, message="TRAITEMENT EN COURS..."):
+        self.is_loading = True
+        self.cancel_event.clear()
+        self.loading_label.configure(text=message)
+        self.open_button.configure(state="disabled", text="PATIENTEZ...")
+        self.loading_overlay.place(relx=0.5, rely=0.5, anchor="center")
+        self.progress_bar.start()
+
+    def hide_loading(self):
+        self.is_loading = False
+        self.open_button.configure(state="normal", text="OUVRIR EXR")
+        self.loading_overlay.place_forget()
+        self.progress_bar.stop()
+
+    def cancel_loading(self):
+        if self.is_loading:
+            self.cancel_event.set()
+            self.log("Demande d'annulation envoyée...")
+
+    def on_closing(self):
+        self.cancel_event.set()
+        self.destroy()
+
     def hide_magnifier(self, event=None):
         self.magnifier_label.place_forget()
         self.value_info_label.place_forget()
 
     def open_file(self):
+        if self.is_loading: return
+
         path = filedialog.askopenfilename(
             initialdir=self.default_dir,
             filetypes=[("OpenEXR Files", "*.exr")]
         )
         if not path: return
 
+        self.show_loading("CHARGEMENT DE L'EXR...")
+        threading.Thread(target=self._load_exr_thread, args=(path,), daemon=True).start()
+
+    def _load_exr_thread(self, path):
+        """Fonction exécutée en arrière-plan pour ne pas bloquer l'UI"""
         try:
             input_file = oiio.ImageInput.open(path)
-            if not input_file: raise Exception(f"OIIO Error: {oiio.geterror()}")
+            if not input_file:
+                raise Exception(f"Impossible d'ouvrir le fichier : {oiio.geterror()}")
+
+            if self.cancel_event.is_set():
+                input_file.close()
+                self.after(0, self._on_load_cancelled)
+                return
 
             spec = input_file.spec()
-            self.image_size = (spec.width, spec.height)
+            w, h = spec.width, spec.height
+
+            # Lecture des données
             raw_data = input_file.read_image("half")
             input_file.close()
 
-            self.current_exr_data = {name: raw_data[:, :, i] for i, name in enumerate(spec.channelnames)}
-            self.available_channels = spec.channelnames
+            if raw_data is None:
+                raise Exception("Erreur lors de la lecture des pixels du fichier EXR.")
 
-            self.log(f"Fichier : {os.path.basename(path)}", clear=True)
-            self.log(f"Résolution : {spec.width}x{spec.height}")
+            if self.cancel_event.is_set():
+                self.after(0, self._on_load_cancelled)
+                return
 
-            for btn in self.channel_buttons: btn.destroy()
-            self.channel_buttons = []
+            # Extraction des canaux
+            channels_data = {name: raw_data[:, :, i] for i, name in enumerate(spec.channelnames)}
+            available_channels = spec.channelnames
 
-            for name in sorted(self.available_channels):
-                is_std = name in STANDARD_CHANNELS
-                bg_color = "#2980b9" if is_std else "#34495e"
-                hover_color = "#3498db" if is_std else "#3e5871"
-                border_color = "#3498db" if is_std else "transparent"
-
-                btn = ctk.CTkButton(self.channels_scroll,
-                                    text=f" {'★' if is_std else ' '} {name}",
-                                    command=lambda n=name: self.update_view_mode(n),
-                                    anchor="w",
-                                    height=30,
-                                    font=ctk.CTkFont(size=11, weight="bold" if is_std else "normal"),
-                                    fg_color=bg_color,
-                                    hover_color=hover_color,
-                                    border_width=2 if is_std else 0,
-                                    border_color=border_color)
-                btn.pack(fill="x", pady=2)
-                self.channel_buttons.append(btn)
-
-            self.update_view_mode("Composite (RGB)")
+            self.after(0, lambda: self._on_load_success(path, w, h, channels_data, available_channels))
 
         except Exception as e:
-            messagebox.showerror("Erreur de lecture", str(e))
+            # Gestion explicite de l'erreur pour éviter le blocage infini
+            self.after(0, lambda err=str(e): self._on_load_error(err))
+
+    def _on_load_cancelled(self):
+        self.hide_loading()
+        self.log("Chargement annulé.")
+
+    def _on_load_success(self, path, w, h, channels_data, available_channels):
+        self.image_size = (w, h)
+        self.current_exr_data = channels_data
+        self.available_channels = available_channels
+
+        self.log(f"Fichier : {os.path.basename(path)}", clear=True)
+        self.log(f"Résolution : {w}x{h}")
+
+        for btn in self.channel_buttons: btn.destroy()
+        self.channel_buttons = []
+
+        for name in sorted(self.available_channels):
+            is_std = name in STANDARD_CHANNELS
+            bg_color = "#2980b9" if is_std else "#34495e"
+
+            btn = ctk.CTkButton(self.channels_scroll,
+                                text=f" {'★' if is_std else ' '} {name}",
+                                command=lambda n=name: self.safe_update_view_mode(n),
+                                anchor="w", height=30,
+                                fg_color=bg_color)
+            btn.pack(fill="x", pady=2)
+            self.channel_buttons.append(btn)
+
+        self.hide_loading()
+        self.update_view_mode("Composite (RGB)")
+
+    def _on_load_error(self, error_msg):
+        self.hide_loading()
+        self.log(f"ERREUR : {error_msg}")
+        messagebox.showerror("Erreur Critique", f"Le chargement a échoué :\n{error_msg}")
+
+    def safe_update_view_mode(self, mode):
+        """Lance la mise à jour de la vue avec un petit loader si nécessaire"""
+        if not self.current_exr_data or self.is_loading: return
+        self.show_loading(f"CALCUL : {mode}")
+        # On utilise after(10) pour laisser l'UI afficher le loader avant de lancer le calcul lourd
+        self.after(10, lambda: self._process_view_mode(mode))
+
+    def _process_view_mode(self, mode):
+        try:
+            self.update_view_mode(mode)
+        finally:
+            self.hide_loading()
 
     def update_view_mode(self, mode):
-        if not self.current_exr_data: return
         self.current_view_mode = mode
-
         w, h = self.image_size
         img_np = np.zeros((h, w, 3), dtype=np.float32)
 
@@ -179,10 +271,8 @@ class FlycastViewer(ctk.CTk):
                 if c in self.current_exr_data: img_np[:, :, i] = self.current_exr_data[c]
 
         elif mode == "Normal Map":
-            # Débiaisage : passage de [-1, 1] vers [0, 1] pour l'affichage visuel (RGB)
             for i, c in enumerate(['Normal.X', 'Normal.Y', 'Normal.Z']):
                 if c in self.current_exr_data:
-                    # Formule : (val + 1.0) * 0.5
                     img_np[:, :, i] = (self.current_exr_data[c] + 1.0) / 2.0
 
         elif mode == "Albedo + AO":
@@ -198,7 +288,7 @@ class FlycastViewer(ctk.CTk):
         self.refresh_image_display()
 
     def on_resize(self, event=None):
-        if self.last_numpy_image is not None:
+        if self.last_numpy_image is not None and not self.is_loading:
             self.refresh_image_display()
 
     def refresh_image_display(self):
@@ -250,7 +340,7 @@ class FlycastViewer(ctk.CTk):
             self.log(f"Inspecté : {display_text}")
 
     def update_magnifier(self, event):
-        if not self.magnifier_var.get() or self.full_pil_image is None:
+        if not self.magnifier_var.get() or self.full_pil_image is None or self.is_loading:
             self.hide_magnifier()
             return
 
