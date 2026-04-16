@@ -22,8 +22,7 @@ class FlycastViewer(ctk.CTk):
         self.last_numpy_image = None
         self.full_pil_image = None
         self.current_view_mode = "Composite (RGB)"
-        self.zoom_factor = 4
-        self.magnifier_size = 200
+        self.magnifier_size = 200  # Size of the UI widget
         self.display_size = (0, 0)
         self.default_dir = user_pictures_dir()
 
@@ -46,7 +45,7 @@ class FlycastViewer(ctk.CTk):
         # Tools Section
         ctk.CTkLabel(self.sidebar, text="TOOLS", font=ctk.CTkFont(size=12, weight="bold")).pack(pady=(20, 5))
         self.magnifier_var = ctk.BooleanVar(value=True)
-        self.magnifier_switch = ctk.CTkSwitch(self.sidebar, text="Magnifier", variable=self.magnifier_var)
+        self.magnifier_switch = ctk.CTkSwitch(self.sidebar, text="Magnifier (1:1)", variable=self.magnifier_var)
         self.magnifier_switch.pack(pady=5, padx=20, anchor="w")
 
         # Composite Modes Section
@@ -203,23 +202,30 @@ class FlycastViewer(ctk.CTk):
         orig_x = int((x / disp_w) * orig_w)
         orig_y = int((y / disp_h) * orig_h)
 
-        # Define crop area for magnifier
-        m_half_orig = (self.magnifier_size // self.zoom_factor) // 2
-        left = max(0, orig_x - m_half_orig)
-        top = max(0, orig_y - m_half_orig)
-        right = min(orig_w, orig_x + m_half_orig)
-        bottom = min(orig_h, orig_y + m_half_orig)
+        # For 1:1 view, we crop a square of 'magnifier_size' from the original image
+        m_half = self.magnifier_size // 2
+        left = max(0, orig_x - m_half)
+        top = max(0, orig_y - m_half)
+        right = min(orig_w, orig_x + m_half)
+        bottom = min(orig_h, orig_y + m_half)
 
         try:
-            # Create zoomed image
+            # Create 1:1 crop
             crop = self.full_pil_image.crop((left, top, right, bottom))
-            zoomed = crop.resize((self.magnifier_size, self.magnifier_size), Image.Resampling.NEAREST)
+
+            # Since it's 1:1, we don't resize the image contents, but the widget
+            # needs a fixed size. We pad the crop if it's smaller than the widget (at edges)
+            zoomed = Image.new("RGB", (self.magnifier_size, self.magnifier_size), (0, 0, 0))
+            # Calculate paste position in the magnifier window if we are near borders
+            paste_x = max(0, m_half - orig_x)
+            paste_y = max(0, m_half - orig_y)
+            zoomed.paste(crop, (paste_x, paste_y))
 
             # Draw crosshair in the center of the magnifier
             draw = ImageDraw.Draw(zoomed)
             mid = self.magnifier_size // 2
-            line_len = 10
-            # Draw crosshair (white with black outline for visibility)
+            line_len = 8
+            # Draw crosshair (black background for contrast)
             for color, width in [("black", 3), ("white", 1)]:
                 draw.line([(mid - line_len, mid), (mid + line_len, mid)], fill=color, width=width)
                 draw.line([(mid, mid - line_len), (mid, mid + line_len)], fill=color, width=width)
@@ -231,15 +237,15 @@ class FlycastViewer(ctk.CTk):
                                     size=(self.magnifier_size + 4, self.magnifier_size + 4))
             self.magnifier_label.configure(image=zoom_ctk)
 
-            # Position magnifier with offset from cursor to avoid flickering/event conflicts
-            mx = x + self.display_label.winfo_x() + 20
-            my = y + self.display_label.winfo_y() + 20
+            # Position magnifier with offset
+            mx = x + self.display_label.winfo_x() + 25
+            my = y + self.display_label.winfo_y() + 25
 
-            # Boundary check to keep magnifier inside container
+            # Boundary check
             if mx + self.magnifier_size > self.image_container.winfo_width():
-                mx -= (self.magnifier_size + 40)
+                mx -= (self.magnifier_size + 50)
             if my + self.magnifier_size > self.image_container.winfo_height():
-                my -= (self.magnifier_size + 40)
+                my -= (self.magnifier_size + 50)
 
             self.magnifier_label.place(x=mx, y=my)
         except Exception:
