@@ -1,15 +1,16 @@
 import numpy as np
 from PIL import Image
+from constants import Channels # Import the Channels class
 
 class ImageProcessor:
     @staticmethod
     def get_available_composite_modes(available_channels):
         modes = []
-        if all(c in available_channels for c in ['Albedo.R', 'Albedo.G', 'Albedo.B']):
+        if all(c in available_channels for c in [Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B]):
             modes.append("Composite (RGB)")
-        if all(c in available_channels for c in ['Normal.X', 'Normal.Y', 'Normal.Z']):
+        if all(c in available_channels for c in [Channels.NORMAL_X, Channels.NORMAL_Y, Channels.NORMAL_Z]):
             modes.append("Normal Map")
-        if any(c in available_channels for c in ['Albedo.R', 'Albedo.G', 'Albedo.B']) and 'SSAO.AO' in available_channels:
+        if any(c in available_channels for c in [Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B]) and Channels.SSAO_AO in available_channels:
             modes.append("Albedo + AO")
         return modes
 
@@ -19,22 +20,22 @@ class ImageProcessor:
         img_np = np.zeros((h, w, 3), dtype=np.float32)
 
         if mode == "Composite (RGB)":
-            for i, c in enumerate(['Albedo.R', 'Albedo.G', 'Albedo.B']):
+            for i, c in enumerate([Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B]):
                 if c in exr_data: img_np[:, :, i] = exr_data[c]
 
         elif mode == "Normal Map":
-            for i, c in enumerate(['Normal.X', 'Normal.Y', 'Normal.Z']):
+            for i, c in enumerate([Channels.NORMAL_X, Channels.NORMAL_Y, Channels.NORMAL_Z]):
                 if c in exr_data:
                     img_np[:, :, i] = (exr_data[c] + 1.0) / 2.0
 
         elif mode == "Albedo + AO":
-            ao = exr_data.get('SSAO.AO', np.ones((h, w)))
-            for i, c in enumerate(['Albedo.R', 'Albedo.G', 'Albedo.B']):
+            ao = exr_data.get(Channels.SSAO_AO, np.ones((h, w)))
+            for i, c in enumerate([Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B]):
                 if c in exr_data: img_np[:, :, i] = exr_data[c] * ao
         
-        elif mode == "Material.ID":
-            if 'Material.ID' in exr_data:
-                mat_ids = (exr_data['Material.ID'] * 255.0).astype(np.uint8)
+        elif mode == Channels.MATERIAL_ID:
+            if Channels.MATERIAL_ID in exr_data:
+                mat_ids = np.round(exr_data[Channels.MATERIAL_ID] * 255.0).astype(np.uint8)
                 # A simple color hash to visualize IDs
                 r = (mat_ids * 13) & 255
                 g = (mat_ids * 47) & 255
@@ -53,18 +54,18 @@ class ImageProcessor:
         try:
             if mode == "Composite (RGB)":
                 res = []
-                for c in ['Albedo.R', 'Albedo.G', 'Albedo.B']:
+                for c in [Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B]:
                     if c in exr_data: res.append(f"{exr_data[c][py, px]:.3f}")
                 return f"RGB({', '.join(res)})"
             elif mode == "Normal Map":
                 res = []
-                for c in ['Normal.X', 'Normal.Y', 'Normal.Z']:
+                for c in [Channels.NORMAL_X, Channels.NORMAL_Y, Channels.NORMAL_Z]:
                     if c in exr_data: res.append(f"{exr_data[c][py, px]:.3f}")
                 return f"RawNorm({', '.join(res)})"
             
-            elif mode == "Material.ID":
-                if "Material.ID" not in exr_data: return "N/A"
-                val = exr_data["Material.ID"][py, px]
+            elif mode == Channels.MATERIAL_ID:
+                if Channels.MATERIAL_ID not in exr_data: return "N/A"
+                val = exr_data[Channels.MATERIAL_ID][py, px]
                 mat_id = int(round(val * 255.0))
 
                 list_type_map = {

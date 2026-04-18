@@ -5,7 +5,7 @@ from PIL import Image, ImageOps, ImageDraw
 import numpy as np
 from platformdirs import user_pictures_dir
 
-from constants import STANDARD_CHANNELS
+from constants import STANDARD_CHANNELS, Channels # Import Channels class
 from exr_loader import EXRLoader
 from image_processor import ImageProcessor
 
@@ -210,16 +210,16 @@ class FlycastViewer(ctk.CTk):
 
     def _update_composite_buttons_state(self):
         # Composite (RGB) nécessite Albedo.R, G, B
-        has_rgb = all(c in self.available_channels for c in ['Albedo.R', 'Albedo.G', 'Albedo.B'])
+        has_rgb = all(c in self.available_channels for c in [Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B])
         self.composite_buttons["Composite (RGB)"].configure(state="normal" if has_rgb else "disabled")
         
         # Normal Map nécessite Normal.X, Y, Z
-        has_normals = all(c in self.available_channels for c in ['Normal.X', 'Normal.Y', 'Normal.Z'])
+        has_normals = all(c in self.available_channels for c in [Channels.NORMAL_X, Channels.NORMAL_Y, Channels.NORMAL_Z])
         self.composite_buttons["Normal Map"].configure(state="normal" if has_normals else "disabled")
         
         # Albedo + AO nécessite au moins un Albedo et SSAO.AO
-        has_albedo = any(c in self.available_channels for c in ['Albedo.R', 'Albedo.G', 'Albedo.B'])
-        has_ao = 'SSAO.AO' in self.available_channels
+        has_albedo = any(c in self.available_channels for c in [Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B])
+        has_ao = Channels.SSAO_AO in self.available_channels
         self.composite_buttons["Albedo + AO"].configure(state="normal" if (has_albedo and has_ao) else "disabled")
 
     def _on_load_error(self, error_msg):
