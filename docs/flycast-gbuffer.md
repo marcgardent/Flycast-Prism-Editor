@@ -107,8 +107,8 @@ The G-Buffer export is specifically designed to provide high-quality "Ground Tru
 
 ### 1. High Precision Depth
 
-Unlike standard renders, the **Depth.Z** channel is exported as a **32-bit floating point** value. 
-*   **Reverse-Z Mapping**: Flycast uses an inverted Z-buffer where **1.0 is the Near plane** and **0.0 is the Far plane (Infinity)**. 
+Unlike standard renders, the **Depth.Z** channel is exported as a **32-bit floating point** value.
+*   **Reverse-Z Mapping**: Flycast uses an inverted Z-buffer where **1.0 is the Near plane** and **0.0 is the Far plane (Infinity)**.
 *   **Zero Transformation**: The depth data is copied directly from the GPU memory (`D32_SFLOAT`) to ensure no quantization errors occur.
 
 ### 2. Lexicographical Sorting
@@ -116,8 +116,9 @@ Unlike standard renders, the **Depth.Z** channel is exported as a **32-bit float
 OpenEXR standard requires channels to be sorted alphabetically in the file header. The export pipeline automatically sorts all 15 channels (e.g., `A`, `B`, `Depth.Z`, `G`, `HUD.A`...) before serialization. This prevents channel misalignment in standard EXR viewers.
 
 ### 3. Native Material Segmentation
-
 The **Material.ID** is exported as a native 32-bit unsigned integer. This allows for perfect per-object or per-material segmentation without the precision issues of normalized float IDs.
+*   **Presence Bit (Bit 7)**: All geometry has the bit 7 set (value >= 128). This distinguishes valid geometry from the background (0).
+*   **Bit Layout**: Bit 7: Presence, Bits 6-4: List Type, Bit 3: Texture, Bit 2: Gouraud, Bit 1: BumpMap, Bit 0: Fog.
 
 ## Technical Notes
 

@@ -41,7 +41,8 @@ class ImageProcessor:
                 mat_ids = exr_data[Channels.MATERIAL_ID].astype(np.uint32)
 
                 # Official hashColor function translated to NumPy
-                h = mat_ids * 2654435761  # 2654435761u
+                # Added & 0xFFFFFFFF for 32-bit integer precision as in GLSL
+                h = (mat_ids * 2654435761) & 0xFFFFFFFF
 
                 r = ((h >> 16) & 255).astype(np.float32) / 255.0
                 g = ((h >> 8) & 255).astype(np.float32) / 255.0
@@ -89,20 +90,32 @@ class ImageProcessor:
                 # Material.ID is now a native 32-bit unsigned integer
                 mat_id = int(val)
 
+                # New bit layout:
+                # Bit 7: Presence
+                # Bits 6-4: List Type
+                # Bit 3: Texture
+                # Bit 2: Gouraud
+                # Bit 1: BumpMap
+                # Bit 0: Fog
+
+                presence_bit = (mat_id >> 7) & 1
+                list_type_val = (mat_id >> 4) & 0b111  # Bits 6-4 (3 bits)
+                has_texture = (mat_id >> 3) & 1        # Bit 3 (1 bit)
+                is_gouraud = (mat_id >> 2) & 1         # Bit 2 (1 bit)
+                has_bumpmap = (mat_id >> 1) & 1        # Bit 1 (1 bit)
+                fog_ctrl = mat_id & 1                  # Bit 0 (1 bit)
+
                 list_type_map = {
                     0: "Opaque", 1: "Opaque Mod", 2: "Translucent",
                     3: "Translucent Mod", 4: "Punch-Through"
                 }
-
-                list_type_val = (mat_id >> 5) & 0b111
-                has_texture = (mat_id >> 4) & 1
-                is_gouraud = (mat_id >> 3) & 1
-                has_bumpmap = (mat_id >> 2) & 1
-                fog_ctrl = mat_id & 0b11
-
+                
                 list_type_str = list_type_map.get(list_type_val, f"Unknown ({list_type_val})")
 
+                presence_str = "Present" if presence_bit else "Background"
+
                 return (f"ID: {mat_id} | "
+                        f"Presence: {presence_str} | "
                         f"List: {list_type_str} | "
                         f"Tex: {'Y' if has_texture else 'N'} | "
                         f"Gouraud: {'Y' if is_gouraud else 'N'} | "

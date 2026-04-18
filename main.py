@@ -180,6 +180,16 @@ class FlycastViewer(ctk.CTk):
         self.log(f"Fichier : {os.path.basename(path)}", clear=True)
         self.log(f"Résolution : {w}x{h}")
 
+        # Log Material.ID raw values from corners
+        if Channels.MATERIAL_ID in self.current_exr_data:
+            mat_id_data = self.current_exr_data[Channels.MATERIAL_ID]
+            top_left = int(mat_id_data[0, 0])
+            top_right = int(mat_id_data[0, w - 1])
+            bottom_left = int(mat_id_data[h - 1, 0])
+            bottom_right = int(mat_id_data[h - 1, w - 1])
+            self.log(f"Material.ID (Corners): TL={top_left}, TR={top_right}, BL={bottom_left}, BR={bottom_right}")
+
+
         # Mise à jour des boutons composites
         self._update_composite_buttons_state()
 
