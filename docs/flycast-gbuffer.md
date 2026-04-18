@@ -1,71 +1,147 @@
-# G-Buffer Technical Specification
+# G-Buffer Architecture
 
-This document provides a technical specification for the G-Buffer implementation in Flycast, specifically focusing on the structure and encoding of the exported OpenEXR files.
+This document provides a technical specification for the G-Buffer implementation in Flycast, specifically focusing on the deferred shading pipeline, post-processing chain, and the structure of the exported OpenEXR files.
 
 ## Overview
 
-The G-Buffer is part of the deferred rendering pipeline in the Vulkan renderer. It captures essential scene information in a single pass, which is then used for post-processing effects such as SSAO (Screen Space Ambient Occlusion), Depth of Field (DoF), and material visualization.
+The G-Buffer is part of a **modern Deferred Shading pipeline** in the Vulkan renderer. It captures essential scene information in a single geometry pass. All G-Buffer attachments are treated as **read-only** after the geometry pass; no post-process writes back into them (non-destructive principle).
 
-The G-Buffer can be exported to an OpenEXR file by pressing **ALT+G** during emulation.
+The G-Buffer can be exported to an OpenEXR file by pressing **ALT+9** during emulation.
 
-## OpenEXR File Structure
+## Rendering Pipeline
 
-The exported `.exr` file is a multi-channel image containing 9 channels. All channels are stored as **16-bit half-precision floats** (FP16), even if their source data was integer or 32-bit float.
+The pipeline follows a strict 5-phase execution order within `GBufferVulkanRenderer::Present()`:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Phase A: Geometry Pass (G-Buffer Fill)                             │
+│  → Writes: Albedo, Normals, MaterialID, Motion, HUD, Depth          │
+│  → After this pass, ALL G-Buffer attachments become READ-ONLY       │
+└────────────────────────┬────────────────────────────────────────────┘
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Phase B: SSAOPass (Screen-Space Ambient Occlusion)                 │
+│  → Reads: Depth, Normals                                            │
+│  → Writes: ssaoTex (R8Unorm) — isolated, non-destructive            │
+└────────────────────────┬────────────────────────────────────────────┘
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Phase C: CompositePass (Deferred Lighting)                         │
+│  → Reads: Albedo, Normals, Depth, MaterialID, Motion, ssaoTex, HUD  │
+│  → Writes: Accumulation Buffer (R16G16B16A16Sfloat — HDR)           │
+│  → Formula: color = Albedo.rgb * SSAO                               │
+└────────────────────────┬────────────────────────────────────────────┘
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Phase D: DoFPass (Depth of Field — Post-Processing)                │
+│  → Reads: Accumulation Buffer, Depth                                │
+│  → Writes: Accumulation Buffer (ping-pong via temp buffer)          │
+│  → Operates on the lit HDR image, not raw Albedo                    │
+└────────────────────────┬────────────────────────────────────────────┘
+                         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Phase E: FinalPass (Tonemapping + HUD Overlay)                     │
+│  → Reads: Accumulation Buffer (post-processed), HUD Buffer          │
+│  → Writes: Final output (R8G8B8A8Unorm → Swapchain)                 │
+│  → HUD is composited here (unaffected by DoF)                       │
+│  → Tonemapping (Reinhard) can be enabled here                       │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Design Principles
+
+1. **G-Buffer Immutability**: Once the geometry pass completes, G-Buffer attachments (Albedo, Normals, Depth, etc.) are 100% read-only (`ShaderReadOnlyOptimal`). No post-process writes into them.
+2. **Dedicated Accumulation Buffer**: Lighting and global effects are computed and stored in a dedicated HDR buffer (`R16G16B16A16Sfloat`), separate from the raw G-Buffer data.
+3. **Strict Pass Separation**: Each pass has well-defined inputs and a single output. No implicit side effects.
+4. **Non-Destructive HUD**: The HUD is composited only in the final pass, ensuring it is never affected by DoF or other camera effects.
+
+## Passes Implementation
+
+### SSAOPass
+
+- **Shader**: `vulkan_ssao.frag`
+- **Input**: Depth attachment, Normal attachment
+- **Output**: `ssaoTex` (R8Unorm) — standalone AO factor
+- **Note**: Writes exclusively to its own buffer. The old destructive multiply-on-Albedo behavior has been removed.
+
+### CompositePass (Lighting Pass)
+
+- **Shader**: `vulkan_gbuffer_composite.frag`
+- **Input**: All G-Buffer attachments + ssaoTex
+- **Output**: Accumulation Buffer (`R16G16B16A16Sfloat`)
+- **Debug modes**: viewMode push constant selects between Final (0), Albedo (1), Normals (2), Depth (3), Material (4), Motion (5), SSAO (6), HUD (7)
+
+### DoFPass (Depth of Field)
+
+- **Shader**: `vulkan_dof.frag`
+- **Input**: Accumulation Buffer, Depth attachment
+- **Output**: Accumulation Buffer (via blit from temp buffer)
+- **Note**: Operates on the lit HDR image, not raw Albedo. Internal format is `R16G16B16A16Sfloat` to preserve HDR precision.
+
+### FinalPass (Tonemapping + HUD Overlay)
+
+- **Shader**: `vulkan_gbuffer_final.frag`
+- **Input**: Accumulation Buffer, HUD attachment
+- **Output**: Final image (`R8G8B8A8Unorm`) ready for swapchain presentation
+- **Note**: Only executed for `viewMode == 0` (Final) or `viewMode == 7` (HUD debug). Other debug views bypass this pass and present the Accumulation Buffer directly.
+
+## OpenEXR Export Structure
+
+The exported `.exr` file is a multi-channel image containing **15 channels**. The export pipeline uses a **data-driven mapping** and enforces **lexicographical sorting** for maximum compatibility with professional VFX tools (Nuke, Photoshop, DJV).
 
 ### Channel Mapping
 
-| EXR Channel Name | Source Attachment | Description | Data Range |
+| EXR Channel Name | Format | Source | Data Range |
 | :--- | :--- | :--- | :--- |
-| `Albedo.R` | Attachment 0 (R8G8B8A8) | Diffuse Color (Red) | [0.0, 1.0] |
-| `Albedo.G` | Attachment 0 (R8G8B8A8) | Diffuse Color (Green) | [0.0, 1.0] |
-| `Albedo.B` | Attachment 0 (R8G8B8A8) | Diffuse Color (Blue) | [0.0, 1.0] |
-| `Normal.X` | Attachment 1 (R16G16B16A16F) | World/View Space Normal (X) | [-1.0, 1.0] |
-| `Normal.Y` | Attachment 1 (R16G16B16A16F) | World/View Space Normal (Y) | [-1.0, 1.0] |
-| `Normal.Z` | Attachment 1 (R16G16B16A16F) | World/View Space Normal (Z) | [-1.0, 1.0] |
-| `Depth.Z` | Depth Attachment | Linearized/Raw Depth | [0.0, 1.0] |
-| `Material.ID` | Attachment 2 (R8Uint) | Encoded Material Properties | [0.0, 1.0] (ID/255) |
-| `SSAO.AO` | SSAO Pass (R8Unorm) | Ambient Occlusion Factor | [0.0, 1.0] |
+| `R, G, B, A` | Half 16b | Albedo Buffer (Att 0) | [0.0, 1.0] |
+| `Normal.X/Y/Z` | Half 16b | Normal Buffer (Att 1) | [-1.0, 1.0] |
+| `Depth.Z` | **Float 32b** | Depth Buffer | [0.0 (Far), 1.0 (Near)] |
+| `Material.ID` | **Uint 32b** | Material Buffer (Att 2) | [0, 255] |
+| `SSAO.AO` | Float 32b | SSAO Texture | [0.0, 1.0] |
+| `Motion.X/Y` | Half 16b | Motion Buffer (Att 3) | Pixel Velocity |
+| `HUD.R/G/B/A` | Float 32b | HUD Buffer (Att 4) | [0.0, 1.0] |
 
-## Buffer Details
+## G-Buffer Export for AI and Deep Learning
 
-### 1. Albedo (`Albedo.R/G/B`)
-*   **Format**: Originally `eR8G8B8A8Unorm`.
-*   **Content**: The base color of the surface after texture sampling and vertex coloring, but before lighting.
-*   **Normalization**: Divided by 255.0 to map to [0, 1].
+The G-Buffer export is specifically designed to provide high-quality "Ground Truth" data for machine learning tasks.
 
-### 2. Normals (`Normal.X/Y/Z`)
-*   **Format**: Originally `eR16G16B16A16Sfloat`.
-*   **Content**: Surface normals. If vertex normals are missing, they are generated using cross-products of position derivatives (`dFdx`/`dFdy`).
-*   **Range**: Real values representing the normal vector components.
+### 1. High Precision Depth
 
-### 3. Depth (`Depth.Z`)
-*   **Format**: Originally `eD32Sfloat` or `eD24UnormS8Uint`.
-*   **Content**: The depth value from the depth buffer.
-*   **Normalization**: For `D24S8`, the 24-bit value is normalized by `16777215.0`.
+Unlike standard renders, the **Depth.Z** channel is exported as a **32-bit floating point** value. 
+*   **Reverse-Z Mapping**: Flycast uses an inverted Z-buffer where **1.0 is the Near plane** and **0.0 is the Far plane (Infinity)**. 
+*   **Zero Transformation**: The depth data is copied directly from the GPU memory (`D32_SFLOAT`) to ensure no quantization errors occur.
 
-### 4. Material ID (`Material.ID`)
-*   **Format**: Originally `eR8Uint`.
-*   **Normalization**: Stored as `matID / 255.0` in the EXR.
-*   **Reconstruction**: To get the original 8-bit ID, use: `uint8_t id = round(Material.ID * 255.0)`.
+### 2. Lexicographical Sorting
 
-#### Bitmask Encoding (8 bits)
-The Material ID encodes several properties from the PowerVR (PVR) hardware:
+OpenEXR standard requires channels to be sorted alphabetically in the file header. The export pipeline automatically sorts all 15 channels (e.g., `A`, `B`, `Depth.Z`, `G`, `HUD.A`...) before serialization. This prevents channel misalignment in standard EXR viewers.
 
-| Bits | Name | Description | Values |
-| :--- | :--- | :--- | :--- |
-| **7-5** | `list_type` | PVR List Type | 0: Opaque, 1: Opaque Mod, 2: Translucent, 3: Translucent Mod, 4: Punch-Through |
-| **4** | `has_texture` | Texture presence | 0: No texture, 1: Textured |
-| **3** | `is_gouraud` | Shading mode | 0: Flat, 1: Gouraud |
-| **2** | `has_bumpmap` | Bump mapping | 0: No bump, 1: Bump map active |
-| **1-0** | `fog_ctrl` | Fog control | 0-3: PVR Fog modes |
+### 3. Native Material Segmentation
 
-### 5. SSAO (`SSAO.AO`)
-*   **Format**: Originally `eR8Unorm`.
-*   **Content**: Pre-calculated Screen Space Ambient Occlusion factor.
-*   **Range**: `1.0` means no occlusion, `0.0` means full occlusion.
+The **Material.ID** is exported as a native 32-bit unsigned integer. This allows for perfect per-object or per-material segmentation without the precision issues of normalized float IDs.
 
 ## Technical Notes
 
-*   **File Naming**: Files are saved as `gbuffer_YYYYMMDD_HHMMSS.exr` in the screenshots directory.
-*   **Library**: The export uses `tinyexr` for writing the OpenEXR files.
-*   **Layout**: EXR channels are sorted alphabetically by most tools, but the internal order in the file is determined by the `tinyexr` header initialization.
+*   **File Naming**: `gbuffer_YYYYMMDD_HHMMSS.exr` in the screenshots directory.
+*   **Hotkeys**:
+    *   **ALT+1/2/3/4/5/6/7/8**: Toggle various debug views (Depth, Normals, SSAO, Motion, Material, Albedo, HUD).
+    *   **ALT+7**: Show pure Albedo buffer (No HUD, No post-effects).
+    *   **ALT+8**: Show HUD attachment alone.
+    *   **ALT+0**: Return to final composite view.
+    *   **ALT+9**: Export current G-Buffer to EXR.
+
+## Key Source Files
+
+| File | Role |
+| :--- | :--- |
+| `core/rend/vulkan/gbuffer/gbuffer_renderer.cpp` | Pipeline orchestration, EXR Export, `Present()` |
+| `core/rend/vulkan/gbuffer/gbuffer_constants.h` | G-Buffer attachment index constants |
+| `core/rend/vulkan/shaders/vulkan_gbuffer_composite.frag` | Deferred Lighting / Debug views shader |
+| `core/rend/vulkan/shaders/vulkan_gbuffer_final.frag` | Tonemapping + HUD overlay shader |
+| `core/rend/vulkan/shaders/vulkan_ssao.frag` | SSAO computation shader |
+| `core/rend/vulkan/shaders/vulkan_main.frag` | Geometry pass (G-Buffer fill) |
+
+## Changelog
+
+- **2026-04-18**: Fixed Depth export regression. Enabled full 32-bit float precision for Depth.Z and Uint32 for Material.ID. Standardized channel naming (R,G,B,A) for Albedo. Improved OpenEXR documentation for Deep Learning use cases.
+- **2026-04-17**: Complete refactor into a non-destructive Deferred Shading pipeline. Added HDR Accumulation Buffer, FinalPass, isolated SSAO, fixed DoF (operates on lit image), isolated HUD into final pass. Added Motion and HUD buffers to 15-channel EXR export.
+- **2026-04-16**: Separated HUD into a dedicated G-Buffer attachment.

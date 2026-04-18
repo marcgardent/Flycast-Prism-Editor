@@ -35,12 +35,37 @@ class ImageProcessor:
         
         elif mode == Channels.MATERIAL_ID:
             if Channels.MATERIAL_ID in exr_data:
-                mat_ids = np.round(exr_data[Channels.MATERIAL_ID] * 255.0).astype(np.uint8)
-                # A simple color hash to visualize IDs
-                r = (mat_ids * 13) & 255
-                g = (mat_ids * 47) & 255
-                b = (mat_ids * 101) & 255
-                img_np = np.stack([r, g, b], axis=-1).astype(np.float32) / 255.0
+                mat_ids = np.round(exr_data[Channels.MATERIAL_ID] * 255.0).astype(np.uint32) # Use uint32 for hash calculation
+                
+                # Official hashColor function translated to NumPy
+                h = mat_ids * 2654435761 # 2654435761u
+                
+                r = ((h >> 16) & 255).astype(np.float32) / 255.0
+                g = ((h >> 8)  & 255).astype(np.float32) / 255.0
+                b = (h & 255).astype(np.float32) / 255.0
+                
+                # Handle matID == 0u case
+                zero_mask = (mat_ids == 0)
+                r[zero_mask] = 0.1
+                g[zero_mask] = 0.1
+                b[zero_mask] = 0.1
+
+                img_np = np.stack([r, g, b], axis=-1)
+
+        elif mode == Channels.DEPTH_Z:
+            if Channels.DEPTH_Z in exr_data:
+                chan = exr_data[Channels.DEPTH_Z]
+                # Normalize 1/W values to [0, 1] for grayscale display
+                # Assuming 0 is far (black) and max value is near (white)
+                min_val = np.min(chan)
+                max_val = np.max(chan)
+                
+                if max_val - min_val > 1e-6: # Avoid division by zero
+                    normalized_chan = (chan - min_val) / (max_val - min_val)
+                else:
+                    normalized_chan = np.zeros_like(chan) # All same value, show as black
+                
+                img_np = np.stack([normalized_chan, normalized_chan, normalized_chan], axis=-1)
 
         elif mode in exr_data:
             chan = exr_data[mode]
@@ -87,6 +112,11 @@ class ImageProcessor:
                         f"Gouraud: {'Y' if is_gouraud else 'N'} | "
                         f"Bump: {'Y' if has_bumpmap else 'N'} | "
                         f"Fog: {fog_ctrl}")
+            
+            elif mode == Channels.DEPTH_Z:
+                if Channels.DEPTH_Z not in exr_data: return "N/A"
+                val = exr_data[Channels.DEPTH_Z][py, px]
+                return f"Depth (1/W): {val:.6f}"
 
             elif mode in exr_data:
                 val = exr_data[mode][py, px]
