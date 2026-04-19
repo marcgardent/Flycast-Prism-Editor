@@ -80,7 +80,7 @@ class FlycastViewer(ctk.CTk):
         self.composite_buttons = {
             "Composite (RGB)": self._add_view_button(self.composite_frame, "Composite (RGB)"),
             "Normal Map": self._add_view_button(self.composite_frame, "Normal Map"),
-            "Albedo + AO": self._add_view_button(self.composite_frame, "Albedo + AO")
+            "HUD (RGBA)": self._add_view_button(self.composite_frame, "HUD (RGBA)") # New button
         }
 
         # Liste des canaux
@@ -219,10 +219,10 @@ class FlycastViewer(ctk.CTk):
         has_normals = all(c in self.available_channels for c in [Channels.NORMAL_X, Channels.NORMAL_Y, Channels.NORMAL_Z])
         self.composite_buttons["Normal Map"].configure(state="normal" if has_normals else "disabled")
         
-        # Albedo + AO nécessite au moins un Albedo et SSAO.AO
-        has_albedo = any(c in self.available_channels for c in [Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B])
-        has_ao = Channels.SSAO_AO in self.available_channels
-        self.composite_buttons["Albedo + AO"].configure(state="normal" if (has_albedo and has_ao) else "disabled")
+        # HUD (RGBA) nécessite HUD.R, G, B, A
+        has_hud_rgba = all(c in self.available_channels for c in [Channels.HUD_R, Channels.HUD_G, Channels.HUD_B, Channels.HUD_A])
+        self.composite_buttons["HUD (RGBA)"].configure(state="normal" if has_hud_rgba else "disabled")
+
 
     def _on_load_error(self, error_msg):
         self.hide_loading()

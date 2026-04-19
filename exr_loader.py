@@ -63,14 +63,6 @@ class EXRLoader:
                 # Squeeze to remove the channel dimension if it's 1
                 channel_array = channel_array.squeeze()
 
-                # --- Diagnostic logs for Material.ID ---
-                if name == Channels.MATERIAL_ID and self.on_progress:
-                    self.on_progress(f"  Material.ID raw array dtype: {channel_array.dtype}")
-                    # Log a sample value from the array (e.g., top-left corner)
-                    if channel_array.size > 0:
-                        self.on_progress(f"  Material.ID sample (0,0) before astype: {channel_array[0,0]}")
-                # --- End Diagnostic logs ---
-
                 # Explicitly convert Material.ID to uint32 (this might be redundant if native_format works, but safe)
                 if name == Channels.MATERIAL_ID:
                     raw_data_dict[name] = channel_array.astype(np.uint32)

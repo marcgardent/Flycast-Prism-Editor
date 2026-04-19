@@ -11,9 +11,8 @@ class ImageProcessor:
             modes.append("Composite (RGB)")
         if all(c in available_channels for c in [Channels.NORMAL_X, Channels.NORMAL_Y, Channels.NORMAL_Z]):
             modes.append("Normal Map")
-        if any(c in available_channels for c in
-               [Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B]) and Channels.SSAO_AO in available_channels:
-            modes.append("Albedo + AO")
+        if all(c in available_channels for c in [Channels.HUD_R, Channels.HUD_G, Channels.HUD_B, Channels.HUD_A]):
+            modes.append("HUD (RGBA)") # New mode
         return modes
 
     @staticmethod
@@ -30,10 +29,17 @@ class ImageProcessor:
                 if c in exr_data:
                     img_np[:, :, i] = (exr_data[c] + 1.0) / 2.0
 
-        elif mode == "Albedo + AO":
-            ao = exr_data.get(Channels.SSAO_AO, np.ones((h, w)))
-            for i, c in enumerate([Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B]):
-                if c in exr_data: img_np[:, :, i] = exr_data[c] * ao
+        elif mode == "HUD (RGBA)": # New mode with alpha blending
+            hud_r = exr_data.get(Channels.HUD_R, np.zeros((h, w), dtype=np.float32))
+            hud_g = exr_data.get(Channels.HUD_G, np.zeros((h, w), dtype=np.float32))
+            hud_b = exr_data.get(Channels.HUD_B, np.zeros((h, w), dtype=np.float32))
+            hud_a = exr_data.get(Channels.HUD_A, np.ones((h, w), dtype=np.float32)) # Default to opaque if no alpha
+
+            # Blend with a black background using alpha: C_out = C_src * alpha + C_bg * (1 - alpha)
+            # Assuming C_bg is black (0,0,0), so C_out = C_src * alpha
+            img_np[:, :, 0] = hud_r * hud_a
+            img_np[:, :, 1] = hud_g * hud_a
+            img_np[:, :, 2] = hud_b * hud_a
 
         elif mode == Channels.MATERIAL_ID:
             if Channels.MATERIAL_ID in exr_data:
@@ -83,6 +89,11 @@ class ImageProcessor:
                 for c in [Channels.NORMAL_X, Channels.NORMAL_Y, Channels.NORMAL_Z]:
                     if c in exr_data: res.append(f"{exr_data[c][py, px]:.3f}")
                 return f"RawNorm({', '.join(res)})"
+            elif mode == "HUD (RGBA)": # New mode
+                res = []
+                for c in [Channels.HUD_R, Channels.HUD_G, Channels.HUD_B, Channels.HUD_A]:
+                    if c in exr_data: res.append(f"{exr_data[c][py, px]:.3f}")
+                return f"HUD({', '.join(res)})"
 
             elif mode == Channels.MATERIAL_ID:
                 if Channels.MATERIAL_ID not in exr_data: return "N/A"
