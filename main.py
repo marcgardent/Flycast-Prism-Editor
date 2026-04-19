@@ -29,6 +29,18 @@ class FlycastViewer(ctk.CTk):
         self.default_dir = user_pictures_dir()
         self.current_pixel_value = "N/A"
 
+        # Logo
+        self.logo_image = None
+        self.logo_path = os.path.join(os.path.dirname(__file__), "assets", "logo-prism.png")
+        try:
+            pil_logo = Image.open(self.logo_path)
+            self.logo_image = ctk.CTkImage(light_image=pil_logo, dark_image=pil_logo, size=(pil_logo.width, pil_logo.height))
+        except FileNotFoundError:
+            print(f"Logo file not found at {self.logo_path}. Continuing without logo.")
+        except Exception as e:
+            print(f"Error loading logo: {e}. Continuing without logo.")
+
+
         # Gestion du chargement
         self.is_loading = False
         self.loader = EXRLoader(
@@ -73,6 +85,14 @@ class FlycastViewer(ctk.CTk):
                                               variable=self.magnifier_var)
         self.magnifier_switch.pack(pady=5, padx=20, anchor="w")
 
+        # Theme switch
+        self.appearance_mode_label = ctk.CTkLabel(self.sidebar, text="Mode d'apparence:", anchor="w")
+        self.appearance_mode_label.pack(pady=(10, 0), padx=20, fill="x")
+        self.appearance_mode_optionemenu = ctk.CTkOptionMenu(self.sidebar, values=["System", "Dark", "Light"],
+                                                                       command=self._change_appearance_mode_event)
+        self.appearance_mode_optionemenu.pack(pady=(0, 10), padx=20, fill="x")
+        self.appearance_mode_optionemenu.set("System") # Default to system theme
+
         # Modes Composites
         ctk.CTkLabel(self.sidebar, text="MODES COMPOSITES", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(25, 5))
         self.composite_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
@@ -102,6 +122,11 @@ class FlycastViewer(ctk.CTk):
 
         self.display_label = ctk.CTkLabel(self.image_container, text="", cursor="crosshair")
         self.display_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        # Display logo initially if available
+        if self.logo_image:
+            self.display_label.configure(image=self.logo_image, text="")
+            self.display_label.image = self.logo_image # Keep a reference
 
         # Overlay de chargement
         self.loading_overlay = ctk.CTkFrame(self.image_container, fg_color="#1a1a1a", corner_radius=10, border_width=2,
@@ -181,6 +206,9 @@ class FlycastViewer(ctk.CTk):
         self.log(f"Fichier : {os.path.basename(path)}", clear=True)
         self.log(f"Résolution : {w}x{h}")
 
+        # Clear logo when EXR is loaded
+        self.display_label.configure(image=None, text="")
+        self.display_label.image = None
 
         # Mise à jour des boutons composites
         self._update_composite_buttons_state()
@@ -228,10 +256,21 @@ class FlycastViewer(ctk.CTk):
         self.hide_loading()
         self.log(f"ERREUR : {error_msg}")
         messagebox.showerror("Erreur Critique", f"Le chargement a échoué :\n{error_msg}")
+        self._display_logo_if_no_image() # Re-display logo on error
 
     def _on_load_cancelled(self):
         self.hide_loading()
         self.log("Chargement annulé.")
+        self._display_logo_if_no_image() # Re-display logo on cancelled
+
+    def _display_logo_if_no_image(self):
+        if self.last_numpy_image is None and self.logo_image:
+            self.display_label.configure(image=self.logo_image, text="")
+            self.display_label.image = self.logo_image # Keep a reference
+        elif self.last_numpy_image is None and not self.logo_image:
+            self.display_label.configure(image=None, text="No image loaded and no logo available.")
+            self.display_label.image = None
+
 
     def safe_update_view_mode(self, mode):
         if not self.current_exr_data or self.is_loading: return
@@ -263,9 +302,15 @@ class FlycastViewer(ctk.CTk):
     def on_resize(self, event=None):
         if self.last_numpy_image is not None and not self.is_loading:
             self.refresh_image_display()
+        elif self.last_numpy_image is None and self.logo_image: # Resize logo if no image is loaded
+            self._display_logo_if_no_image()
+
 
     def refresh_image_display(self):
-        if self.last_numpy_image is None: return
+        if self.last_numpy_image is None:
+            self._display_logo_if_no_image()
+            return
+
         cont_w, cont_h = self.image_container.winfo_width(), self.image_container.winfo_height()
         if cont_w < 50 or cont_h < 50: return
 
@@ -278,6 +323,11 @@ class FlycastViewer(ctk.CTk):
             resized_pil = self.full_pil_image.resize(self.display_size, Image.Resampling.LANCZOS)
             ctk_img = ctk.CTkImage(light_image=resized_pil, dark_image=resized_pil, size=self.display_size)
             self.display_label.configure(image=ctk_img)
+            self.display_label.image = ctk_img # Keep a reference
+        else:
+            self.display_label.configure(image=None, text="Image too small to display")
+            self.display_label.image = None
+
 
     def on_image_click(self, event):
         if self.current_pixel_value != "N/A":
@@ -332,6 +382,9 @@ class FlycastViewer(ctk.CTk):
             self.value_info_label.place(x=mx, y=info_y)
         except Exception:
             self.hide_magnifier()
+
+    def _change_appearance_mode_event(self, new_appearance_mode: str):
+        ctk.set_appearance_mode(new_appearance_mode)
 
 if __name__ == "__main__":
     app = FlycastViewer()
