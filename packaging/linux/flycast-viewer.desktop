@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Flycast G-Buffer Viewer
+Comment=Viewer for Flycast G-Buffer EXR files
+Exec=flycast-viewer
+Icon=logo-prism
+Categories=Graphics;Viewer;
+Terminal=false
