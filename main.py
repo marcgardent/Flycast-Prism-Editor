@@ -93,9 +93,20 @@ class FlycastViewer(ctk.CTk):
         self.appearance_mode_optionemenu.pack(pady=(0, 10), padx=20, fill="x")
         self.appearance_mode_optionemenu.set("System") # Default to system theme
 
-        # Modes Composites
-        ctk.CTkLabel(self.sidebar, text="MODES COMPOSITES", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(25, 5))
-        self.composite_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        # Tabview for G-Buffer Viewer and HUD Selector
+        self.tabview = ctk.CTkTabview(self.sidebar, width=300)
+        self.tabview.pack(pady=(20, 0), padx=20, fill="both", expand=True)
+
+        self.gbuffer_tab = self.tabview.add("G-Buffer Viewer")
+        self.hud_selector_tab = self.tabview.add("HUD Selector")
+
+        # Configure G-Buffer Viewer tab
+        self.tabview.tab("G-Buffer Viewer").grid_columnconfigure(0, weight=1)
+        self.tabview.tab("HUD Selector").grid_columnconfigure(0, weight=1)
+
+        # Modes Composites (moved to G-Buffer Viewer tab)
+        ctk.CTkLabel(self.gbuffer_tab, text="MODES COMPOSITES", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(15, 5))
+        self.composite_frame = ctk.CTkFrame(self.gbuffer_tab, fg_color="transparent")
         self.composite_frame.pack(fill="x", padx=15)
         self.composite_buttons = {
             "Composite (RGB)": self._add_view_button(self.composite_frame, "Composite (RGB)"),
@@ -103,10 +114,10 @@ class FlycastViewer(ctk.CTk):
             "HUD (RGBA)": self._add_view_button(self.composite_frame, "HUD (RGBA)") # New button
         }
 
-        # Liste des canaux
-        ctk.CTkLabel(self.sidebar, text="CANAUX (BLEU = STANDARD)", font=ctk.CTkFont(size=13, weight="bold")).pack(
+        # Liste des canaux (moved to G-Buffer Viewer tab)
+        ctk.CTkLabel(self.gbuffer_tab, text="CANAUX (BLEU = STANDARD)", font=ctk.CTkFont(size=13, weight="bold")).pack(
             pady=(25, 5))
-        self.channels_scroll = ctk.CTkScrollableFrame(self.sidebar, height=350, fg_color="transparent")
+        self.channels_scroll = ctk.CTkScrollableFrame(self.gbuffer_tab, height=350, fg_color="transparent")
         self.channels_scroll.pack(fill="both", expand=True, padx=15, pady=5)
         self.channel_buttons = []
 
