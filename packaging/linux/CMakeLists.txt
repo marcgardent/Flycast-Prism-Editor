@@ -18,7 +18,7 @@ set(ROOT_DIR "${CMAKE_SOURCE_DIR}")
 
 # Target to check if Git is clean
 add_custom_target(check-git-clean
-    COMMAND bash -c "if [ -n \"$(git status --porcelain)\" ]; then echo 'ERROR: Uncommitted changes found! Please commit or stash your changes before publishing.'; exit 1; fi"
+    COMMAND bash -c "git status --porcelain | grep -q . && (echo 'ERROR: Uncommitted changes found! Please commit or stash your changes before publishing.' && exit 1) || exit 0"
     WORKING_DIRECTORY ${ROOT_DIR}
     COMMENT "Checking for a clean Git state..."
 )
