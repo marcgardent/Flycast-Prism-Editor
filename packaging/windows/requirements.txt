@@ -1,0 +1,6 @@
+numpy
+pillow
+customtkinter
+OpenImageIO
+imageio
+platformdirs
