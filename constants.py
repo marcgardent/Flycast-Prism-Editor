@@ -16,9 +16,21 @@ class Channels:
     HUD_B = 'HUD.B'
     HUD_A = 'HUD.A'
 
+    # Metadata channels
+    METADATA_WORLDPOS_X = 'Metadata.WorldPos.X'
+    METADATA_WORLDPOS_Y = 'Metadata.WorldPos.Y'
+    METADATA_WORLDPOS_Z = 'Metadata.WorldPos.Z'
+    METADATA_TEXTURE_HASH = 'Metadata.TextureHash'
+    METADATA_POLY_COUNT = 'Metadata.PolyCount'
+
+    # Composite Modes
+    COMBINED_METADATA = 'Metadata'
+
 
 STANDARD_CHANNELS = [
     Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B,
     Channels.NORMAL_X, Channels.NORMAL_Y, Channels.NORMAL_Z,
-    Channels.DEPTH_Z, Channels.MATERIAL_ID, Channels.SSAO_AO
+    Channels.DEPTH_Z, Channels.MATERIAL_ID, Channels.SSAO_AO,
+    Channels.METADATA_WORLDPOS_X, Channels.METADATA_WORLDPOS_Y, Channels.METADATA_WORLDPOS_Z,
+    Channels.METADATA_TEXTURE_HASH, Channels.METADATA_POLY_COUNT
 ]

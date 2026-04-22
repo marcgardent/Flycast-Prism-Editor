@@ -28,6 +28,7 @@ class FlycastViewer(ctk.CTk):
         self.display_size = (0, 0)
         self.default_dir = user_pictures_dir()
         self.current_pixel_value = "N/A"
+        self.last_clicked_event = None
 
         # Logo
         self.logo_image = None
@@ -98,11 +99,27 @@ class FlycastViewer(ctk.CTk):
         self.tabview.pack(pady=(20, 0), padx=20, fill="both", expand=True)
 
         self.gbuffer_tab = self.tabview.add("G-Buffer Viewer")
-        self.hud_selector_tab = self.tabview.add("HUD Selector")
+        self.poly_routing_tab = self.tabview.add("Poly Routing")
 
-        # Configure G-Buffer Viewer tab
+        # Configure tabs
         self.tabview.tab("G-Buffer Viewer").grid_columnconfigure(0, weight=1)
-        self.tabview.tab("HUD Selector").grid_columnconfigure(0, weight=1)
+        self.tabview.tab("Poly Routing").grid_columnconfigure(0, weight=1)
+
+        # Poly Routing Tab UI
+        ctk.CTkLabel(self.poly_routing_tab, text="ANNOTATION", font=ctk.CTkFont(size=11, weight="bold")).pack(pady=(10, 0), padx=20, anchor="w")
+        self.poly_name_entry = ctk.CTkEntry(self.poly_routing_tab, height=30)
+        self.poly_name_entry.insert(0, "my annotation")
+        self.poly_name_entry.pack(pady=(0, 10), padx=15, fill="x")
+        self.poly_name_entry.bind("<KeyRelease>", lambda e: self.update_poly_routing_json())
+
+        ctk.CTkLabel(self.poly_routing_tab, text="ROUTING JSON (AUTO-UPDATE)", font=ctk.CTkFont(size=11, weight="bold")).pack(pady=(10, 0), padx=20, anchor="w")
+        self.poly_json_box = ctk.CTkTextbox(self.poly_routing_tab, height=150, font=ctk.CTkFont(family="Courier", size=12))
+        self.poly_json_box.pack(pady=(0, 10), padx=15, fill="x")
+
+        self.copy_json_button = ctk.CTkButton(self.poly_routing_tab, text="COPIER JSON", command=self.copy_poly_json,
+                                             fg_color="#27ae60", hover_color="#2ecc71")
+        self.copy_json_button.pack(pady=10, padx=15, fill="x")
+
 
         # Modes Composites (moved to G-Buffer Viewer tab)
         ctk.CTkLabel(self.gbuffer_tab, text="MODES COMPOSITES", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(15, 5))
@@ -111,7 +128,8 @@ class FlycastViewer(ctk.CTk):
         self.composite_buttons = {
             "Composite (RGB)": self._add_view_button(self.composite_frame, "Composite (RGB)"),
             "Normal Map": self._add_view_button(self.composite_frame, "Normal Map"),
-            "HUD (RGBA)": self._add_view_button(self.composite_frame, "HUD (RGBA)") # New button
+            "HUD (RGBA)": self._add_view_button(self.composite_frame, "HUD (RGBA)"),
+            "Metadata": self._add_view_button(self.composite_frame, Channels.COMBINED_METADATA)
         }
 
         # Liste des canaux (moved to G-Buffer Viewer tab)
@@ -216,6 +234,7 @@ class FlycastViewer(ctk.CTk):
 
         self.log(f"Fichier : {os.path.basename(path)}", clear=True)
         self.log(f"Résolution : {w}x{h}")
+        self.log(f"Canaux trouvés : {', '.join(sorted(available_channels))}")
 
         # Clear logo when EXR is loaded
         self.display_label.configure(image=None, text="")
@@ -261,6 +280,14 @@ class FlycastViewer(ctk.CTk):
         # HUD (RGBA) nécessite HUD.R, G, B, A
         has_hud_rgba = all(c in self.available_channels for c in [Channels.HUD_R, Channels.HUD_G, Channels.HUD_B, Channels.HUD_A])
         self.composite_buttons["HUD (RGBA)"].configure(state="normal" if has_hud_rgba else "disabled")
+
+        # Metadata (Combined)
+        metadata_channels = [
+            Channels.METADATA_WORLDPOS_X, Channels.METADATA_WORLDPOS_Y, Channels.METADATA_WORLDPOS_Z,
+            Channels.METADATA_TEXTURE_HASH, Channels.METADATA_POLY_COUNT
+        ]
+        has_metadata = any(c in self.available_channels for c in metadata_channels)
+        self.composite_buttons["Metadata"].configure(state="normal" if has_metadata else "disabled")
 
 
     def _on_load_error(self, error_msg):
@@ -339,13 +366,53 @@ class FlycastViewer(ctk.CTk):
             self.display_label.configure(image=None, text="Image too small to display")
             self.display_label.image = None
 
-
     def on_image_click(self, event):
         if self.current_pixel_value != "N/A":
             display_text = f"{self.current_view_mode}: {self.current_pixel_value}"
             self.inspect_entry.delete(0, "end")
             self.inspect_entry.insert(0, display_text)
             self.log(f"Inspecté : {display_text}")
+            
+            # Update Poly Routing JSON if data is available
+            self.last_clicked_event = event
+            self.update_poly_routing_json()
+
+    def update_poly_routing_json(self, event=None):
+        # Use provided event or the last stored one
+        evt = event or self.last_clicked_event
+        if evt is None or self.full_pil_image is None or not self.current_exr_data:
+            return
+
+        x, y = evt.x, evt.y
+        disp_w, disp_h = self.display_size
+        orig_w, orig_h = self.full_pil_image.size
+        orig_x, orig_y = int((x / disp_w) * orig_w), int((y / disp_h) * orig_h)
+
+        if not (0 <= orig_x < orig_w and 0 <= orig_y < orig_h):
+            return
+
+        metadata = ImageProcessor.get_pixel_metadata(orig_x, orig_y, self.current_exr_data)
+        if metadata:
+            import json
+            # Build the JSON object with nested 'match' and empty 'actions'
+            poly_data = {
+                "name": self.poly_name_entry.get(),
+                "match": metadata,
+                "actions": []
+            }
+            json_str = json.dumps(poly_data, indent=2)
+            
+            self.poly_json_box.delete("0.0", "end")
+            self.poly_json_box.insert("0.0", json_str)
+
+    def copy_poly_json(self):
+        json_content = self.poly_json_box.get("0.0", "end-1c")
+        if json_content.strip():
+            self.clipboard_clear()
+            self.clipboard_append(json_content)
+            self.log("JSON copié dans le presse-papier !")
+        else:
+            self.log("Rien à copier (cliquez sur l'image d'abord)")
 
     def update_magnifier(self, event):
         if not self.magnifier_var.get() or self.full_pil_image is None or self.is_loading:

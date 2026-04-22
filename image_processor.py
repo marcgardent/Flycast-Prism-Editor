@@ -13,7 +13,37 @@ class ImageProcessor:
             modes.append("Normal Map")
         if all(c in available_channels for c in [Channels.HUD_R, Channels.HUD_G, Channels.HUD_B, Channels.HUD_A]):
             modes.append("HUD (RGBA)") # New mode
+        
+        # Combined Metadata Mode
+        metadata_channels = [
+            Channels.METADATA_WORLDPOS_X, Channels.METADATA_WORLDPOS_Y, Channels.METADATA_WORLDPOS_Z,
+            Channels.METADATA_TEXTURE_HASH, Channels.METADATA_POLY_COUNT
+        ]
+        if any(c in available_channels for c in metadata_channels):
+            modes.append(Channels.COMBINED_METADATA)
+
         return modes
+
+    @staticmethod
+    def _apply_hash_color(ids_array):
+        """Applique l'algorithme de hashColor officiel Flycast."""
+        # ids_array should be a numpy array (uint32 or uint64)
+        ids_32 = ids_array.astype(np.uint32)
+        
+        # Multiplicative hash
+        h = (ids_32 * 2654435761) & 0xFFFFFFFF
+
+        r = ((h >> 16) & 255).astype(np.float32) / 255.0
+        g = ((h >> 8) & 255).astype(np.float32) / 255.0
+        b = (h & 255).astype(np.float32) / 255.0
+
+        # Handle zero case (background)
+        zero_mask = (ids_32 == 0)
+        r[zero_mask] = 0.1
+        g[zero_mask] = 0.1
+        b[zero_mask] = 0.1
+
+        return np.stack([r, g, b], axis=-1)
 
     @staticmethod
     def process_view_mode(mode, image_size, exr_data):
@@ -43,30 +73,35 @@ class ImageProcessor:
 
         elif mode == Channels.MATERIAL_ID:
             if Channels.MATERIAL_ID in exr_data:
-                # Material.ID is now a native 32-bit unsigned integer
-                mat_ids = exr_data[Channels.MATERIAL_ID].astype(np.uint32)
+                img_np = ImageProcessor._apply_hash_color(exr_data[Channels.MATERIAL_ID])
 
-                # Official hashColor function translated to NumPy
-                # Added & 0xFFFFFFFF for 32-bit integer precision as in GLSL
-                h = (mat_ids * 2654435761) & 0xFFFFFFFF
+        elif mode == Channels.METADATA_TEXTURE_HASH:
+            if Channels.METADATA_TEXTURE_HASH in exr_data:
+                img_np = ImageProcessor._apply_hash_color(exr_data[Channels.METADATA_TEXTURE_HASH])
 
-                r = ((h >> 16) & 255).astype(np.float32) / 255.0
-                g = ((h >> 8) & 255).astype(np.float32) / 255.0
-                b = (h & 255).astype(np.float32) / 255.0
-
-                # Handle matID == 0u case
-                zero_mask = (mat_ids == 0)
-                r[zero_mask] = 0.1
-                g[zero_mask] = 0.1
-                b[zero_mask] = 0.1
-
-                img_np = np.stack([r, g, b], axis=-1)
+        elif mode == Channels.COMBINED_METADATA:
+            # Combined Hash calculation
+            h_acc = np.zeros((h, w), dtype=np.uint32)
+            
+            # WorldPos: Combine bits of X, Y, Z
+            for c in [Channels.METADATA_WORLDPOS_X, Channels.METADATA_WORLDPOS_Y, Channels.METADATA_WORLDPOS_Z]:
+                if c in exr_data:
+                    # Crucial: Ensure float32 before view as uint32 to avoid size mismatch with float16 (half)
+                    h_acc ^= exr_data[c].astype(np.float32).view(np.uint32)
+            
+            # Texture Hash (u32)
+            if Channels.METADATA_TEXTURE_HASH in exr_data:
+                h_acc ^= exr_data[Channels.METADATA_TEXTURE_HASH].astype(np.uint32)
+            
+            # Poly Count
+            if Channels.METADATA_POLY_COUNT in exr_data:
+                h_acc ^= exr_data[Channels.METADATA_POLY_COUNT].astype(np.uint32)
+            
+            img_np = ImageProcessor._apply_hash_color(h_acc)
 
         elif mode == Channels.DEPTH_Z:
             if Channels.DEPTH_Z in exr_data:
                 chan = exr_data[Channels.DEPTH_Z]
-                # Depth.Z is already 32-bit float with Reverse-Z mapping (0.0=Far, 1.0=Near)
-                # So, the channel itself is the normalized value for grayscale display.
                 img_np = np.stack([chan, chan, chan], axis=-1)
 
         elif mode in exr_data:
@@ -97,41 +132,46 @@ class ImageProcessor:
 
             elif mode == Channels.MATERIAL_ID:
                 if Channels.MATERIAL_ID not in exr_data: return "N/A"
-                val = exr_data[Channels.MATERIAL_ID][py, px]
-                # Material.ID is now a native 32-bit unsigned integer
-                mat_id = int(val)
-
-                # New bit layout:
-                # Bit 7: Presence
-                # Bits 6-4: List Type
-                # Bit 3: Texture
-                # Bit 2: Gouraud
-                # Bit 1: BumpMap
-                # Bit 0: Fog
-
-                presence_bit = (mat_id >> 7) & 1
-                list_type_val = (mat_id >> 4) & 0b111  # Bits 6-4 (3 bits)
-                has_texture = (mat_id >> 3) & 1        # Bit 3 (1 bit)
-                is_gouraud = (mat_id >> 2) & 1         # Bit 2 (1 bit)
-                has_bumpmap = (mat_id >> 1) & 1        # Bit 1 (1 bit)
-                fog_ctrl = mat_id & 1                  # Bit 0 (1 bit)
-
-                list_type_map = {
-                    0: "Opaque", 1: "Opaque Mod", 2: "Translucent",
-                    3: "Translucent Mod", 4: "Punch-Through"
-                }
+                val = int(exr_data[Channels.MATERIAL_ID][py, px])
                 
-                list_type_str = list_type_map.get(list_type_val, f"Unknown ({list_type_val})")
+                presence_bit = (val >> 7) & 1
+                list_type_val = (val >> 4) & 0b111
+                has_texture = (val >> 3) & 1
+                is_gouraud = (val >> 2) & 1
+                has_bumpmap = (val >> 1) & 1
+                fog_ctrl = val & 1
 
+                list_type_map = {0: "Opaque", 1: "Opaque Mod", 2: "Translucent", 3: "Translucent Mod", 4: "Punch-Through"}
+                list_type_str = list_type_map.get(list_type_val, f"Unknown ({list_type_val})")
                 presence_str = "Present" if presence_bit else "Background"
 
-                return (f"ID: {mat_id} | "
-                        f"Presence: {presence_str} | "
-                        f"List: {list_type_str} | "
-                        f"Tex: {'Y' if has_texture else 'N'} | "
-                        f"Gouraud: {'Y' if is_gouraud else 'N'} | "
-                        f"Bump: {'Y' if has_bumpmap else 'N'} | "
-                        f"Fog: {fog_ctrl}")
+                return (f"ID: {val} | List: {list_type_str} | Tex: {'Y' if has_texture else 'N'} | "
+                        f"Gouraud: {'Y' if is_gouraud else 'N'} | Bump: {'Y' if has_bumpmap else 'N'} | Fog: {fog_ctrl}")
+
+            elif mode == Channels.METADATA_TEXTURE_HASH:
+                if Channels.METADATA_TEXTURE_HASH not in exr_data: return "N/A"
+                val = exr_data[Channels.METADATA_TEXTURE_HASH][py, px]
+                return f"TexHash: 0x{int(val):08X}"
+
+            elif mode == Channels.COMBINED_METADATA:
+                parts = []
+                # Pos
+                p_x = exr_data.get(Channels.METADATA_WORLDPOS_X, [None]*py)[py, px] if Channels.METADATA_WORLDPOS_X in exr_data else None
+                p_y = exr_data.get(Channels.METADATA_WORLDPOS_Y, [None]*py)[py, px] if Channels.METADATA_WORLDPOS_Y in exr_data else None
+                p_z = exr_data.get(Channels.METADATA_WORLDPOS_Z, [None]*py)[py, px] if Channels.METADATA_WORLDPOS_Z in exr_data else None
+                if p_x is not None: parts.append(f"Pos:({p_x:.2f}, {p_y:.2f}, {p_z:.2f})")
+                
+                # Tex
+                if Channels.METADATA_TEXTURE_HASH in exr_data:
+                    t_h = exr_data[Channels.METADATA_TEXTURE_HASH][py, px]
+                    parts.append(f"Tex:0x{int(t_h):08X}")
+                
+                # Poly
+                if Channels.METADATA_POLY_COUNT in exr_data:
+                    p_c = int(exr_data[Channels.METADATA_POLY_COUNT][py, px])
+                    parts.append(f"Poly:{p_c}")
+                
+                return " | ".join(parts) if parts else "N/A"
 
             elif mode == Channels.DEPTH_Z:
                 if Channels.DEPTH_Z not in exr_data: return "N/A"
@@ -141,6 +181,28 @@ class ImageProcessor:
             elif mode in exr_data:
                 val = exr_data[mode][py, px]
                 return f"{val:.4f}"
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Picker Error: {e}")
         return "N/A"
+    @staticmethod
+    def get_pixel_metadata(px, py, exr_data):
+        """Récupère toutes les métadonnées pour le Poly Routing."""
+        if not exr_data: return None
+        
+        metadata = {}
+        # WorldPos
+        if all(c in exr_data for c in [Channels.METADATA_WORLDPOS_X, Channels.METADATA_WORLDPOS_Y, Channels.METADATA_WORLDPOS_Z]):
+            metadata["x"] = float(exr_data[Channels.METADATA_WORLDPOS_X][py, px])
+            metadata["y"] = float(exr_data[Channels.METADATA_WORLDPOS_Y][py, px])
+            metadata["z"] = float(exr_data[Channels.METADATA_WORLDPOS_Z][py, px])
+        
+        # PolyCount
+        if Channels.METADATA_POLY_COUNT in exr_data:
+            metadata["count"] = int(exr_data[Channels.METADATA_POLY_COUNT][py, px])
+            
+        # TextureHash
+        if Channels.METADATA_TEXTURE_HASH in exr_data:
+            val = int(exr_data[Channels.METADATA_TEXTURE_HASH][py, px])
+            metadata["texHash"] = f"0x{val:08X}"
+            
+        return metadata
