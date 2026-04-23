@@ -31,6 +31,13 @@ class FlycastViewer(ctk.CTk):
         self.current_pixel_value = "N/A"
         self.last_clicked_event = None
 
+        # État HUD Compositor
+        self.hud_rects = []
+        self.selected_rect_idx = -1
+        self.drag_mode = None # None, 'move', 'nw', 'ne', 'sw', 'se'
+        self.drag_start_orig = None
+        self.drag_rect_start = None
+
         # Logo
         self.logo_image = None
         self.logo_path = os.path.join(os.path.dirname(__file__), "assets", "logo-prism.png")
@@ -123,6 +130,23 @@ class FlycastViewer(ctk.CTk):
                                              fg_color="#27ae60", hover_color="#2ecc71")
         self.copy_json_button.pack(pady=10, padx=15, fill="x")
 
+        # HUD Compositor Tab UI
+        ctk.CTkButton(self.hud_compositor_tab, text="+ AJOUTER RECTANGLE", command=self.add_hud_rect,
+                      fg_color="#2980b9", hover_color="#3498db").pack(pady=10, padx=15, fill="x")
+        
+        self.hud_list_frame = ctk.CTkScrollableFrame(self.hud_compositor_tab, height=200, fg_color="transparent")
+        self.hud_list_frame.pack(fill="x", padx=5, pady=5)
+        
+        self.hud_name_var = ctk.StringVar()
+        self.hud_name_entry = ctk.CTkEntry(self.hud_compositor_tab, textvariable=self.hud_name_var, placeholder_text="Nom du rectangle...")
+        self.hud_name_entry.pack(pady=5, padx=15, fill="x")
+        self.hud_name_var.trace_add("write", lambda *args: self.rename_selected_rect())
+
+        self.delete_rect_btn = ctk.CTkButton(self.hud_compositor_tab, text="SUPPRIMER", command=self.delete_selected_rect,
+                                            fg_color="#c0392b", hover_color="#e74c3c")
+        self.delete_rect_btn.pack(pady=5, padx=15, fill="x")
+        self.delete_rect_btn.configure(state="disabled")
+
 
         # Modes Composites (moved to G-Buffer Viewer tab)
         ctk.CTkLabel(self.gbuffer_tab, text="MODES COMPOSITES", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(15, 5))
@@ -181,7 +205,9 @@ class FlycastViewer(ctk.CTk):
         self.hide_loading()
         self.image_container.bind("<Configure>", self.on_resize)
         self.display_label.bind("<Motion>", self.update_magnifier)
-        self.display_label.bind("<Button-1>", self.on_image_click)
+        self.display_label.bind("<Button-1>", self.on_mouse_down)
+        self.display_label.bind("<B1-Motion>", self.on_mouse_move)
+        self.display_label.bind("<ButtonRelease-1>", self.on_mouse_up)
         self.display_label.bind("<Leave>", self.hide_magnifier)
 
     def _add_view_button(self, parent, text):
@@ -365,7 +391,7 @@ class FlycastViewer(ctk.CTk):
         # Apply overlays based on active tab
         display_pil = self.full_pil_image
         if self.tabview.get() == "HUD Compositor":
-            display_pil = HudCompositor.draw_overlay(self.full_pil_image)
+            display_pil = HudCompositor.draw_overlay(self.full_pil_image, self.hud_rects, self.selected_rect_idx)
 
         img_w, img_h = display_pil.size
         
@@ -381,6 +407,142 @@ class FlycastViewer(ctk.CTk):
         else:
             self.display_label.configure(image=None, text="Image too small to display")
             self.display_label.image = None
+
+    def on_mouse_down(self, event):
+        if self.tabview.get() == "HUD Compositor":
+            self._on_hud_mouse_down(event)
+        else:
+            self.on_image_click(event)
+
+    def on_mouse_move(self, event):
+        if self.tabview.get() == "HUD Compositor":
+            self._on_hud_mouse_move(event)
+        
+    def on_mouse_up(self, event):
+        if self.tabview.get() == "HUD Compositor":
+            self._on_hud_mouse_up(event)
+
+    def _get_orig_coords(self, event):
+        if self.display_size[0] == 0 or self.display_size[1] == 0: return 0, 0
+        mx, my = event.x, event.y
+        dw, dh = self.display_size
+        
+        if self.tabview.get() == "HUD Compositor":
+             orig_w, orig_h = self.image_size
+             p = HudCompositor.PADDING
+             padded_w, padded_h = orig_w + 2*p, orig_h + 2*p
+             px = int(mx * padded_w / dw)
+             py = int(my * padded_h / dh)
+             return px - p, py - p
+        else:
+             orig_w, orig_h = self.image_size
+             return int(mx * orig_w / dw), int(my * orig_h / dh)
+
+    def _on_hud_mouse_down(self, event):
+        ox, oy = self._get_orig_coords(event)
+        self.drag_start_orig = (ox, oy)
+        
+        # Check for handles of selected rect first
+        if self.selected_rect_idx != -1:
+            r = self.hud_rects[self.selected_rect_idx]
+            h_size = 15 # handle click area (approx)
+            
+            # NW, NE, SW, SE
+            handles = {
+                'nw': (r["x"], r["y"]),
+                'ne': (r["x"] + r["w"], r["y"]),
+                'sw': (r["x"], r["y"] + r["h"]),
+                'se': (r["x"] + r["w"], r["y"] + r["h"])
+            }
+            
+            for mode, (hx, hy) in handles.items():
+                if abs(ox - hx) < h_size and abs(oy - hy) < h_size:
+                    self.drag_mode = mode
+                    self.drag_rect_start = r.copy()
+                    return
+
+        # Check for rect body
+        for i, r in enumerate(reversed(self.hud_rects)):
+            idx = len(self.hud_rects) - 1 - i
+            if r["x"] <= ox <= r["x"] + r["w"] and r["y"] <= oy <= r["y"] + r["h"]:
+                self.select_hud_rect(idx)
+                self.drag_mode = 'move'
+                self.drag_rect_start = r.copy()
+                return
+        
+        self.select_hud_rect(-1)
+
+    def _on_hud_mouse_move(self, event):
+        if not self.drag_mode or self.selected_rect_idx == -1: return
+        
+        ox, oy = self._get_orig_coords(event)
+        dx, dy = ox - self.drag_start_orig[0], oy - self.drag_start_orig[1]
+        r = self.hud_rects[self.selected_rect_idx]
+        s = self.drag_rect_start
+        
+        if self.drag_mode == 'move':
+            r["x"], r["y"] = s["x"] + dx, s["y"] + dy
+        elif self.drag_mode == 'nw':
+            r["x"], r["y"] = s["x"] + dx, s["y"] + dy
+            r["w"], r["h"] = max(10, s["w"] - dx), max(10, s["h"] - dy)
+        elif self.drag_mode == 'ne':
+            r["y"] = s["y"] + dy
+            r["w"], r["h"] = max(10, s["w"] + dx), max(10, s["h"] - dy)
+        elif self.drag_mode == 'sw':
+            r["x"] = s["x"] + dx
+            r["w"], r["h"] = max(10, s["w"] - dx), max(10, s["h"] + dy)
+        elif self.drag_mode == 'se':
+            r["w"], r["h"] = max(10, s["w"] + dx), max(10, s["h"] + dy)
+            
+        self.refresh_image_display()
+
+    def _on_hud_mouse_up(self, event):
+        self.drag_mode = None
+        self.update_hud_list()
+
+    def add_hud_rect(self):
+        w, h = self.image_size
+        new_rect = {"name": f"Rectangle {len(self.hud_rects)+1}", "x": w//4, "y": h//4, "w": 200, "h": 150}
+        self.hud_rects.append(new_rect)
+        self.select_hud_rect(len(self.hud_rects)-1)
+        self.refresh_image_display()
+
+    def select_hud_rect(self, idx):
+        self.selected_rect_idx = idx
+        if idx != -1:
+            self.hud_name_var.set(self.hud_rects[idx]["name"])
+            self.delete_rect_btn.configure(state="normal")
+        else:
+            self.hud_name_var.set("")
+            self.delete_rect_btn.configure(state="disabled")
+        self.update_hud_list()
+        self.refresh_image_display()
+
+    def rename_selected_rect(self):
+        if self.selected_rect_idx != -1:
+            self.hud_rects[self.selected_rect_idx]["name"] = self.hud_name_var.get()
+            self.update_hud_list()
+            self.refresh_image_display()
+
+    def delete_selected_rect(self):
+        if self.selected_rect_idx != -1:
+            del self.hud_rects[self.selected_rect_idx]
+            self.select_hud_rect(-1)
+            self.refresh_image_display()
+
+    def update_hud_list(self):
+        for child in self.hud_list_frame.winfo_children():
+            child.destroy()
+        
+        for i, r in enumerate(self.hud_rects):
+            is_sel = (i == self.selected_rect_idx)
+            btn = ctk.CTkButton(self.hud_list_frame, text=r["name"], 
+                                fg_color="#f1c40f" if is_sel else "transparent",
+                                text_color="white" if is_sel else "#aaaaaa",
+                                hover_color="#f39c12" if is_sel else "#333333",
+                                anchor="w", height=28,
+                                command=lambda idx=i: self.select_hud_rect(idx))
+            btn.pack(fill="x", pady=1)
 
     def on_image_click(self, event):
         if self.current_pixel_value != "N/A":

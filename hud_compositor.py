@@ -63,7 +63,7 @@ class HudCompositor:
         draw.polygon(points, outline=color, fill=None, width=2)
 
     @staticmethod
-    def draw_overlay(pil_image):
+    def draw_overlay(pil_image, user_rects=None, selected_idx=-1):
         # On crée une nouvelle image avec du padding pour que les losanges aux bords soient visibles
         padded_img = ImageOps.expand(pil_image, border=HudCompositor.PADDING, fill=(10, 10, 10)) # Fond très sombre pour le padding
         draw = ImageDraw.Draw(padded_img)
@@ -93,5 +93,30 @@ class HudCompositor:
                 color = "#9b59b6" # Purple (Amethyst/Mauve)
                 
             HudCompositor.draw_diamond(draw, draw_pos, size=12, color=color)
+            
+        # 3. User Rectangles
+        if user_rects:
+            for i, r in enumerate(user_rects):
+                is_selected = (i == selected_idx)
+                color = "#f1c40f" if is_selected else "#e67e22" # Yellow if selected, Orange otherwise
+                width = 3 if is_selected else 2
+                
+                # Rect is defined in original image space, offset by p for drawing
+                rx, ry, rw, rh = r["x"] + p, r["y"] + p, r["w"], r["h"]
+                draw.rectangle([rx, ry, rx + rw, ry + rh], outline=color, width=width)
+                
+                # Draw name
+                draw.text((rx + 5, ry + 5), r.get("name", f"Rect {i}"), fill=color)
+                
+                # Draw handles if selected
+                if is_selected:
+                    h_size = 6
+                    # Handles: NW, NE, SW, SE
+                    handles = [
+                        (rx, ry), (rx + rw, ry), 
+                        (rx, ry + rh), (rx + rw, ry + rh)
+                    ]
+                    for hx, hy in handles:
+                        draw.rectangle([hx - h_size, hy - h_size, hx + h_size, hy + h_size], fill=color)
             
         return padded_img
