@@ -98,9 +98,9 @@ class FlycastViewer(ctk.CTk):
         )
 
         # Configuration de la grille (3 colonnes)
-        self.grid_columnconfigure(0, weight=0) # Navigation (Tabs)
-        self.grid_columnconfigure(1, weight=0) # Contrôles / Outils
-        self.grid_columnconfigure(2, weight=1) # Zone Image (Flexible)
+        self.grid_columnconfigure(0, weight=0) # Contrôles / Outils (Gauche)
+        self.grid_columnconfigure(1, weight=1) # Zone Image (Flexible - Centre)
+        self.grid_columnconfigure(2, weight=0) # Navigation / Tabs (Droite)
         self.grid_rowconfigure(0, weight=1)
 
         self._setup_nav_sidebar()
@@ -115,7 +115,7 @@ class FlycastViewer(ctk.CTk):
 
     def _setup_nav_sidebar(self):
         self.nav_sidebar = ctk.CTkFrame(self, width=320, corner_radius=0, border_width=1, border_color="#222222")
-        self.nav_sidebar.grid(row=0, column=0, sticky="nsew")
+        self.nav_sidebar.grid(row=0, column=2, sticky="nsew")
         self.nav_sidebar.grid_propagate(False)
 
         # Tabview moved here
@@ -133,7 +133,7 @@ class FlycastViewer(ctk.CTk):
 
     def _setup_sidebar(self):
         self.sidebar = ctk.CTkFrame(self, width=350, corner_radius=0)
-        self.sidebar.grid(row=0, column=1, sticky="nsew")
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_propagate(False)
 
         self.logo_label = ctk.CTkLabel(self.sidebar, text="FLYCAST G-BUFFER", font=ctk.CTkFont(family="Inter", size=24, weight="bold"))
@@ -248,7 +248,7 @@ class FlycastViewer(ctk.CTk):
 
     def _setup_image_area(self):
         self.image_container = ctk.CTkFrame(self, fg_color="#050505", corner_radius=0)
-        self.image_container.grid(row=0, column=2, sticky="nsew")
+        self.image_container.grid(row=0, column=1, sticky="nsew")
 
         self.display_label = ctk.CTkLabel(self.image_container, text="", cursor="crosshair")
         self.display_label.place(relx=0.5, rely=0.5, anchor="center")
