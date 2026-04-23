@@ -94,18 +94,23 @@ class HudCompositor:
         # 3. User Rectangles
         if user_rects:
             for i, r in enumerate(user_rects):
-                is_selected = (i == selected_idx and mode == "SOURCE")
+                is_selected = (i == selected_idx)
                 color = "#f1c40f" if is_selected else "#e67e22" # Yellow if selected, Orange otherwise
                 width = 3 if is_selected else 2
                 
-                # Rect is defined in original image space, offset by p for drawing
-                rx, ry, rw, rh = r["x"] + p, r["y"] + p, r["w"], r["h"]
+                # Use sx/sy for SOURCE, dx/dy for DESTINATION
+                if mode == "SOURCE":
+                    rx, ry = r["sx"] + p, r["sy"] + p
+                else:
+                    rx, ry = r["dx"] + p, r["dy"] + p
+                    
+                rw, rh = r["w"], r["h"]
                 draw.rectangle([rx, ry, rx + rw, ry + rh], outline=color, width=width)
                 
                 # Draw name
                 draw.text((rx + 5, ry + 5), r.get("name", f"Rect {i}"), fill=color)
                 
-                # Draw handles if selected (SOURCE only)
+                # Draw handles if selected
                 if is_selected:
                     h_size = 6
                     handles = [

@@ -451,54 +451,66 @@ class FlycastViewer(ctk.CTk):
 
     def _on_hud_workspace_changed(self, mode):
         self.hud_workspace = mode
-        # Disable editing controls in DESTINATION mode
-        state = "normal" if mode == "SOURCE" else "disabled"
-        self.hud_name_entry.configure(state=state)
-        if mode != "SOURCE":
-            self.delete_rect_btn.configure(state="disabled")
-        elif self.selected_rect_idx != -1:
+        # Editing is now allowed in both modes
+        self.hud_name_entry.configure(state="normal")
+        if self.selected_rect_idx != -1:
             self.delete_rect_btn.configure(state="normal")
+        else:
+            self.delete_rect_btn.configure(state="disabled")
             
         self.refresh_image_display()
 
     def _on_hud_mouse_down(self, event):
-        if self.hud_workspace != "SOURCE": return
+        # We allow interaction in both SOURCE and DESTINATION now
         ox, oy = self._get_orig_coords(event)
         self.drag_start_orig = (ox, oy)
+        
+        mode = self.hud_workspace
         
         # Check for handles of selected rect first
         if self.selected_rect_idx != -1:
             r = self.hud_rects[self.selected_rect_idx]
-            h_size = 15 # handle click area (approx)
+            h_size = 15 # handle click area
             
-            # NW, NE, SW, SE
+            rx = r["sx"] if mode == "SOURCE" else r["dx"]
+            ry = r["sy"] if mode == "SOURCE" else r["dy"]
+            rw, rh = r["w"], r["h"]
+            
             handles = {
-                'nw': (r["x"], r["y"]),
-                'ne': (r["x"] + r["w"], r["y"]),
-                'sw': (r["x"], r["y"] + r["h"]),
-                'se': (r["x"] + r["w"], r["y"] + r["h"])
+                'nw': (rx, ry),
+                'ne': (rx + rw, ry),
+                'sw': (rx, ry + rh),
+                'se': (rx + rw, ry + rh)
             }
             
-            for mode, (hx, hy) in handles.items():
+            for m, (hx, hy) in handles.items():
                 if abs(ox - hx) < h_size and abs(oy - hy) < h_size:
-                    self.drag_mode = mode
+                    self.drag_mode = m
                     self.drag_rect_start = r.copy()
                     return
 
         # Check for rect body
         for i, r in enumerate(reversed(self.hud_rects)):
             idx = len(self.hud_rects) - 1 - i
-            if r["x"] <= ox <= r["x"] + r["w"] and r["y"] <= oy <= r["y"] + r["h"]:
+            rx = r["sx"] if mode == "SOURCE" else r["dx"]
+            ry = r["sy"] if mode == "SOURCE" else r["dy"]
+            if rx <= ox <= rx + r["w"] and ry <= oy <= ry + r["h"]:
                 self.select_hud_rect(idx)
                 self.drag_mode = 'move'
                 self.drag_rect_start = r.copy()
                 return
         
-        # Creation mode if empty space AND inside safe zone
+        # Creation mode (only in SOURCE suggested? user didn't specify, but usually creation is in source)
+        # Let's allow in both, but it sets both sx/dx to start point
         sx, sy, sw, sh = self._get_safe_zone_bounds()
         if sx <= ox <= sx + sw and sy <= oy <= sy + sh:
             self.drag_mode = 'create'
-            new_rect = {"name": f"Rectangle {len(self.hud_rects)+1}", "x": ox, "y": oy, "w": 0, "h": 0}
+            new_rect = {
+                "name": f"Rectangle {len(self.hud_rects)+1}", 
+                "sx": ox, "sy": oy, 
+                "dx": ox, "dy": oy, 
+                "w": 0, "h": 0
+            }
             self.hud_rects.append(new_rect)
             self.select_hud_rect(len(self.hud_rects)-1)
             self.drag_rect_start = new_rect.copy()
@@ -518,39 +530,66 @@ class FlycastViewer(ctk.CTk):
         dx, dy = ox - self.drag_start_orig[0], oy - self.drag_start_orig[1]
         r = self.hud_rects[self.selected_rect_idx]
         s = self.drag_rect_start
+        mode = self.hud_workspace
         
         if self.drag_mode == 'move':
-            # Constrain whole rect movement to safe zone
-            new_x = s["x"] + dx
-            new_y = s["y"] + dy
-            r["x"] = max(sx, min(sx + sw - r["w"], new_x))
-            r["y"] = max(sy, min(sy + sh - r["h"], new_y))
+            if mode == "SOURCE":
+                r["sx"] = max(sx, min(sx + sw - r["w"], s["sx"] + dx))
+                r["sy"] = max(sy, min(sy + sh - r["h"], s["sy"] + dy))
+            else:
+                r["dx"] = max(sx, min(sx + sw - r["w"], s["dx"] + dx))
+                r["dy"] = max(sy, min(sy + sh - r["h"], s["dy"] + dy))
             
         elif self.drag_mode == 'nw':
-            r["x"] = max(sx, min(s["x"] + s["w"] - 10, s["x"] + dx))
-            r["y"] = max(sy, min(s["y"] + s["h"] - 10, s["y"] + dy))
-            r["w"] = s["x"] + s["w"] - r["x"]
-            r["h"] = s["y"] + s["h"] - r["y"]
+            start_x = s["sx"] if mode == "SOURCE" else s["dx"]
+            start_y = s["sy"] if mode == "SOURCE" else s["dy"]
+            
+            new_x = max(sx, min(start_x + s["w"] - 10, start_x + dx))
+            new_y = max(sy, min(start_y + s["h"] - 10, start_y + dy))
+            
+            if mode == "SOURCE": r["sx"], r["sy"] = new_x, new_y
+            else: r["dx"], r["dy"] = new_x, new_y
+            
+            r["w"] = start_x + s["w"] - new_x
+            r["h"] = start_y + s["h"] - new_y
             
         elif self.drag_mode == 'ne':
-            r["y"] = max(sy, min(s["y"] + s["h"] - 10, s["y"] + dy))
-            r["w"] = max(10, min(sx + sw - s["x"], s["w"] + dx))
-            r["h"] = s["y"] + s["h"] - r["y"]
+            start_x = s["sx"] if mode == "SOURCE" else s["dx"]
+            start_y = s["sy"] if mode == "SOURCE" else s["dy"]
+            
+            new_y = max(sy, min(start_y + s["h"] - 10, start_y + dy))
+            new_w = max(10, min(sx + sw - start_x, s["w"] + dx))
+            
+            if mode == "SOURCE": r["sy"] = new_y
+            else: r["dy"] = new_y
+            
+            r["w"], r["h"] = new_w, start_y + s["h"] - new_y
             
         elif self.drag_mode == 'sw':
-            r["x"] = max(sx, min(s["x"] + s["w"] - 10, s["x"] + dx))
-            r["w"] = s["x"] + s["w"] - r["x"]
-            r["h"] = max(10, min(sy + sh - s["y"], s["h"] + dy))
+            start_x = s["sx"] if mode == "SOURCE" else s["dx"]
+            start_y = s["sy"] if mode == "SOURCE" else s["dy"]
+            
+            new_x = max(sx, min(start_x + s["w"] - 10, start_x + dx))
+            new_h = max(10, min(sy + sh - start_y, s["h"] + dy))
+            
+            if mode == "SOURCE": r["sx"] = new_x
+            else: r["dx"] = new_x
+            
+            r["w"], r["h"] = start_x + s["w"] - new_x, new_h
             
         elif self.drag_mode == 'se':
-            r["w"] = max(10, min(sx + sw - s["x"], s["w"] + dx))
-            r["h"] = max(10, min(sy + sh - s["y"], s["h"] + dy))
+            start_x = s["sx"] if mode == "SOURCE" else s["dx"]
+            start_y = s["sy"] if mode == "SOURCE" else s["dy"]
+            
+            r["w"] = max(10, min(sx + sw - start_x, s["w"] + dx))
+            r["h"] = max(10, min(sy + sh - start_y, s["h"] + dy))
             
         elif self.drag_mode == 'create':
-            # Handle all directions for creation
             x1, y1 = self.drag_start_orig
             x2, y2 = ox, oy
-            r["x"], r["y"] = min(x1, x2), min(y1, y2)
+            # Initial creation sets both sx/sy and dx/dy
+            r["sx"], r["sy"] = min(x1, x2), min(y1, y2)
+            r["dx"], r["dy"] = r["sx"], r["sy"]
             r["w"], r["h"] = abs(x2 - x1), abs(y2 - y1)
             
         self.refresh_image_display()
