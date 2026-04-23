@@ -1,6 +1,6 @@
 import sys
 try:
-    # ACTIVATION DU MODE 'PER-MONITOR V2' POUR WINDOWS (AVANT TOUT IMPORT GRAPHIQUE)
+    # ENABLE 'PER-MONITOR V2' MODE FOR WINDOWS (BEFORE ANY GRAPHICAL IMPORT)
     if sys.platform.startswith("win"):
         import ctypes
         ctypes.windll.shcore.SetProcessDpiAwareness(2)
@@ -20,11 +20,11 @@ from exr_loader import EXRLoader
 from image_processor import ImageProcessor
 from hud_compositor import HudCompositor, Anchor
 
-# FIX KDE PLASMA / LINUX : Évite la déformation des boutons ("os")
+# FIX KDE PLASMA / LINUX: Prevents widget deformation ("os")
 try:
     ctk.DrawEngine.preferred_drawing_method = "circle_shapes"
 except AttributeError:
-    # Selon la version de CTK, l'attribut peut varier ou être interne
+    # Depending on CTK version, this attribute may vary or be internal
     pass
 
 # Global UI Settings for better aesthetics
@@ -35,25 +35,25 @@ class FlycastViewer(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        # LOGIQUE DE DÉTECTION DYNAMIQUE DU SCALING (LINUX/KDE COMPATIBLE)
+        # DYNAMIC SCALING DETECTION LOGIC (LINUX/KDE COMPATIBLE)
         try:
-            # winfo_fpixels('1i') retourne le nombre de pixels par pouce logique
-            # 96 est la valeur standard pour un scaling de 100% (1.0)
+            # winfo_fpixels('1i') returns the number of logical pixels per inch
+            # 96 is the standard value for 100% scaling (1.0)
             scaling_factor = self.winfo_fpixels('1i') / 96.0
             ctk.set_widget_scaling(scaling_factor)
             ctk.set_window_scaling(scaling_factor)
         except Exception:
-            # Fallback sur le scaling automatique du moteur CTK
+            # Fallback to CTK engine automatic scaling
             pass
 
-        # DIAGNOSTIC DE COMPILATION (VÉRIFICATION XFT SUR LINUX)
-        # Pour vérifier si Tkinter est lié à Xft : root.eval("tk::pkgconfig get fontsystem")
-        # Si cela retourne "xft", le rendu des polices sera net. Sinon ("x11"), elles seront pixélisées.
+        # COMPILATION DIAGNOSTIC (CHECK XFT ON LINUX)
+        # To check if Tkinter is linked to Xft: root.eval("tk::pkgconfig get fontsystem")
+        # If it returns "xft", font rendering will be sharp. Otherwise ("x11"), they will be pixelated.
 
         self.title("Flycast G-Buffer Viewer")
         self.geometry("1500x900")
 
-        # État de l'application
+        # Application State
         self.current_exr_data = {}
         self.available_channels = []
         self.image_size = (0, 0)
@@ -67,7 +67,7 @@ class FlycastViewer(ctk.CTk):
         self.current_pixel_value = "N/A"
         self.last_clicked_event = None
 
-        # État HUD Compositor
+        # HUD Compositor State
         self.hud_rects = []
         self.selected_rect_idx = -1
         self.drag_mode = None # None, 'move', 'nw', 'ne', 'sw', 'se'
@@ -88,7 +88,7 @@ class FlycastViewer(ctk.CTk):
             print(f"Error loading logo: {e}. Continuing without logo.")
 
 
-        # Gestion du chargement
+        # Loading Management
         self.is_loading = False
         self.loader = EXRLoader(
             on_success=lambda *args: self.after(0, self._on_load_success, *args),
@@ -97,20 +97,20 @@ class FlycastViewer(ctk.CTk):
             on_progress=self.log # Pass the log function here
         )
 
-        # Configuration de la grille (3 colonnes)
-        self.grid_columnconfigure(0, weight=0) # Contrôles / Outils (Gauche)
-        self.grid_columnconfigure(1, weight=1) # Zone Image (Flexible - Centre)
-        self.grid_columnconfigure(2, weight=0) # Navigation / Tabs (Droite)
+        # Grid Configuration (3 columns)
+        self.grid_columnconfigure(0, weight=0) # Controls / Tools (Left)
+        self.grid_columnconfigure(1, weight=1) # Image Area (Flexible - Center)
+        self.grid_columnconfigure(2, weight=0) # Navigation / Tabs (Right)
         self.grid_rowconfigure(0, weight=1)
 
         self._setup_nav_sidebar()
         self._setup_sidebar()
         self._setup_image_area()
 
-        # État initial de l'interface
+        # Initial UI state
         self._set_ui_visibility(False)
 
-        # Propre fermeture
+        # Clean closure
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def _setup_nav_sidebar(self):
@@ -118,9 +118,20 @@ class FlycastViewer(ctk.CTk):
         self.nav_sidebar.grid(row=0, column=2, sticky="nsew")
         self.nav_sidebar.grid_propagate(False)
 
-        # Tabview moved here
+        # Composite Modes (Moved above tabs for quick access)
+        ctk.CTkLabel(self.nav_sidebar, text="COMPOSITE MODES", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(20, 5))
+        self.composite_frame = ctk.CTkFrame(self.nav_sidebar, fg_color="transparent")
+        self.composite_frame.pack(fill="x", padx=10)
+        self.composite_buttons = {
+            "Composite (RGB)": self._add_view_button(self.composite_frame, "Composite (RGB)"),
+            "Normal Map": self._add_view_button(self.composite_frame, "Normal Map"),
+            "HUD (RGBA)": self._add_view_button(self.composite_frame, "HUD (RGBA)"),
+            "Metadata": self._add_view_button(self.composite_frame, Channels.COMBINED_METADATA)
+        }
+
+        # Tabview for G-Buffer Viewer and HUD Selector
         self.tabview = ctk.CTkTabview(self.nav_sidebar, width=300, command=self._on_tab_changed)
-        self.tabview.pack(pady=(20, 20), padx=10, fill="both", expand=True)
+        self.tabview.pack(pady=(10, 20), padx=10, fill="both", expand=True)
 
         self.gbuffer_tab = self.tabview.add("G-Buffer Viewer")
         self.poly_routing_tab = self.tabview.add("Poly Routing")
@@ -139,31 +150,31 @@ class FlycastViewer(ctk.CTk):
         self.logo_label = ctk.CTkLabel(self.sidebar, text="FLYCAST G-BUFFER", font=ctk.CTkFont(family="Inter", size=24, weight="bold"))
         self.logo_label.pack(pady=(30, 25), padx=20)
 
-        self.open_button = ctk.CTkButton(self.sidebar, text="OUVRIR EXR", command=self.open_file,
-                                         fg_color="#3498db", hover_color="#2980b9", height=45, font=ctk.CTkFont(size=13, weight="bold"))
+        self.open_button = ctk.CTkButton(self.sidebar, text="OPEN EXR", command=self.open_file,
+                                         height=45, font=ctk.CTkFont(size=13, weight="bold"))
         self.open_button.pack(pady=10, padx=20, fill="x")
 
-        # Section Inspecteur
-        ctk.CTkLabel(self.sidebar, text="INSPECTEUR (CLIC IMAGE)", font=ctk.CTkFont(size=13, weight="bold")).pack(
+        # Inspector Section
+        ctk.CTkLabel(self.sidebar, text="INSPECTOR (IMAGE CLICK)", font=ctk.CTkFont(size=13, weight="bold")).pack(
             pady=(25, 5))
-        self.inspect_entry = ctk.CTkEntry(self.sidebar, placeholder_text="Valeur copiée ici...", height=35)
+        self.inspect_entry = ctk.CTkEntry(self.sidebar, placeholder_text="Value copied here...", height=35)
         self.inspect_entry.pack(pady=5, padx=20, fill="x")
 
         # Magnifier Panel (Fixed in sidebar)
         self.magnifier_frame = ctk.CTkFrame(self.sidebar, fg_color="#1a1a1a", corner_radius=8, border_width=1, border_color="#333333")
         self.magnifier_frame.pack(pady=10, padx=20, fill="x")
         
-        ctk.CTkLabel(self.magnifier_frame, text="LOUPE PIXEL-PERFECT (1:1)", font=ctk.CTkFont(size=10, weight="bold"), text_color="#777777").pack(pady=(5, 0))
+        ctk.CTkLabel(self.magnifier_frame, text="PIXEL-PERFECT MAGNIFIER (1:1)", font=ctk.CTkFont(size=10, weight="bold"), text_color="#777777").pack(pady=(5, 0))
         
         self.magnifier_label = ctk.CTkLabel(self.magnifier_frame, text="", fg_color="black", width=240, height=240)
         self.magnifier_label.pack(pady=10, padx=10)
         
-        self.value_info_label = ctk.CTkLabel(self.magnifier_frame, text="SURVOLEZ L'IMAGE", font=ctk.CTkFont(family="Consolas", size=11),
+        self.value_info_label = ctk.CTkLabel(self.magnifier_frame, text="HOVER OVER IMAGE", font=ctk.CTkFont(family="Consolas", size=11),
                                              fg_color="transparent", text_color="#3498db")
         self.value_info_label.pack(pady=(0, 10))
 
-        # Theme switch
-        self.appearance_mode_label = ctk.CTkLabel(self.sidebar, text="Mode d'apparence:", anchor="w")
+        # Appearance mode
+        self.appearance_mode_label = ctk.CTkLabel(self.sidebar, text="Appearance Mode:", anchor="w")
         self.appearance_mode_label.pack(pady=(10, 0), padx=20, fill="x")
         self.appearance_mode_optionemenu = ctk.CTkOptionMenu(self.sidebar, values=["System", "Dark", "Light"],
                                                                        command=self._change_appearance_mode_event)
@@ -183,8 +194,7 @@ class FlycastViewer(ctk.CTk):
         self.poly_json_box = ctk.CTkTextbox(self.poly_routing_tab, height=150, font=ctk.CTkFont(family="Courier", size=12))
         self.poly_json_box.pack(pady=(0, 10), padx=15, fill="x")
 
-        self.copy_json_button = ctk.CTkButton(self.poly_routing_tab, text="COPIER JSON", command=self.copy_poly_json,
-                                             fg_color="#27ae60", hover_color="#2ecc71")
+        self.copy_json_button = ctk.CTkButton(self.poly_routing_tab, text="COPY JSON", command=self.copy_poly_json)
         self.copy_json_button.pack(pady=10, padx=15, fill="x")
 
         # HUD Compositor Tab UI
@@ -198,7 +208,7 @@ class FlycastViewer(ctk.CTk):
         self.hud_list_frame.pack(fill="x", padx=10, pady=5)
         
         self.hud_name_var = ctk.StringVar()
-        self.hud_name_entry = ctk.CTkEntry(self.hud_compositor_tab, textvariable=self.hud_name_var, placeholder_text="Nom du rectangle...")
+        self.hud_name_entry = ctk.CTkEntry(self.hud_compositor_tab, textvariable=self.hud_name_var, placeholder_text="Rectangle name...")
         self.hud_name_entry.pack(pady=5, padx=15, fill="x")
         self.hud_name_var.trace_add("write", lambda *args: self.rename_selected_rect())
 
@@ -207,40 +217,27 @@ class FlycastViewer(ctk.CTk):
                                                variable=self.hud_zen_var, command=self.toggle_zen_mode)
         self.hud_zen_checkbox.pack(pady=5, padx=15, anchor="w")
 
-        self.hud_path_label = ctk.CTkLabel(self.hud_compositor_tab, text="Aucun fichier ouvert", 
+        self.hud_path_label = ctk.CTkLabel(self.hud_compositor_tab, text="No file opened", 
                                           font=ctk.CTkFont(size=10), text_color="#777777", wraplength=180)
         self.hud_path_label.pack(pady=(10, 0), padx=15, fill="x")
 
-        self.load_hud_btn = ctk.CTkButton(self.hud_compositor_tab, text="CHARGER JSON", command=self.load_hud_json,
-                                         fg_color="#34495e", hover_color="#2c3e50")
+        self.load_hud_btn = ctk.CTkButton(self.hud_compositor_tab, text="LOAD JSON", command=self.load_hud_json)
         self.load_hud_btn.pack(pady=5, padx=15, fill="x")
 
-        self.save_hud_btn = ctk.CTkButton(self.hud_compositor_tab, text="SAUVEGARDER", command=self.save_hud_json,
-                                         fg_color="#27ae60", hover_color="#2ecc71")
+        self.save_hud_btn = ctk.CTkButton(self.hud_compositor_tab, text="SAVE", command=self.save_hud_json)
         self.save_hud_btn.pack(pady=5, padx=15, fill="x")
         self.save_hud_btn.configure(state="disabled")
 
-        self.save_as_hud_btn = ctk.CTkButton(self.hud_compositor_tab, text="SAUVEGARDER SOUS", command=self.save_hud_json_as,
-                                            fg_color="#2980b9", hover_color="#3498db")
+        self.save_as_hud_btn = ctk.CTkButton(self.hud_compositor_tab, text="SAVE AS", command=self.save_hud_json_as)
         self.save_as_hud_btn.pack(pady=(5, 10), padx=15, fill="x")
 
-        self.delete_rect_btn = ctk.CTkButton(self.hud_compositor_tab, text="SUPPRIMER", command=self.delete_selected_rect,
-                                            fg_color="#c0392b", hover_color="#e74c3c")
+        self.delete_rect_btn = ctk.CTkButton(self.hud_compositor_tab, text="DELETE", command=self.delete_selected_rect)
 
 
-        # Modes Composites (moved to G-Buffer Viewer tab)
-        ctk.CTkLabel(self.gbuffer_tab, text="MODES COMPOSITES", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(15, 5))
-        self.composite_frame = ctk.CTkFrame(self.gbuffer_tab, fg_color="transparent")
-        self.composite_frame.pack(fill="x", padx=15)
-        self.composite_buttons = {
-            "Composite (RGB)": self._add_view_button(self.composite_frame, "Composite (RGB)"),
-            "Normal Map": self._add_view_button(self.composite_frame, "Normal Map"),
-            "HUD (RGBA)": self._add_view_button(self.composite_frame, "HUD (RGBA)"),
-            "Metadata": self._add_view_button(self.composite_frame, Channels.COMBINED_METADATA)
-        }
+        # Channels List (moved to G-Buffer Viewer tab)
 
-        # Liste des canaux (moved to G-Buffer Viewer tab)
-        ctk.CTkLabel(self.gbuffer_tab, text="CANAUX (BLEU = STANDARD)", font=ctk.CTkFont(size=13, weight="bold")).pack(
+        # Channels List (moved to G-Buffer Viewer tab)
+        ctk.CTkLabel(self.gbuffer_tab, text="CHANNELS (BLUE = STANDARD)", font=ctk.CTkFont(size=13, weight="bold")).pack(
             pady=(25, 5))
         self.channels_scroll = ctk.CTkScrollableFrame(self.gbuffer_tab, height=350, fg_color="transparent")
         self.channels_scroll.pack(fill="both", expand=True, padx=15, pady=5)
@@ -261,18 +258,16 @@ class FlycastViewer(ctk.CTk):
 
         # Display initially empty (Splash Screen will handle the logo)
 
-        # Overlay de chargement
-        self.loading_overlay = ctk.CTkFrame(self.image_container, fg_color="#1a1a1a", corner_radius=15, border_width=2,
-                                            border_color="#3498db")
-        self.loading_label = ctk.CTkLabel(self.loading_overlay, text="TRAITEMENT EN COURS...",
+        # Loading Overlay
+        self.loading_overlay = ctk.CTkFrame(self.image_container, fg_color="#1a1a1a", corner_radius=15, border_width=2)
+        self.loading_label = ctk.CTkLabel(self.loading_overlay, text="PROCESSING...",
                                           font=ctk.CTkFont(family="Inter", size=16, weight="bold"))
         self.loading_label.pack(pady=(20, 10), padx=30)
         self.progress_bar = ctk.CTkProgressBar(self.loading_overlay, orientation="horizontal", width=250)
         self.progress_bar.pack(pady=(0, 15), padx=30)
         self.progress_bar.configure(mode="indeterminate")
 
-        self.cancel_button = ctk.CTkButton(self.loading_overlay, text="ANNULER", command=self.cancel_loading,
-                                           fg_color="#c0392b", hover_color="#e74c3c", width=100, height=28)
+        self.cancel_button = ctk.CTkButton(self.loading_overlay, text="CANCEL", command=self.cancel_loading, width=100, height=28)
         self.cancel_button.pack(pady=(0, 20))
 
         self.hide_loading()
@@ -285,12 +280,11 @@ class FlycastViewer(ctk.CTk):
              self.splash_logo = ctk.CTkLabel(self.splash_frame, image=self.logo_image, text="")
              self.splash_logo.pack(pady=20)
         
-        self.splash_btn = ctk.CTkButton(self.splash_frame, text="OUVRIR UN FICHIER EXR", command=self.open_file,
-                                        width=300, height=60, font=ctk.CTkFont(size=16, weight="bold"),
-                                        fg_color="#3498db", hover_color="#2980b9")
+        self.splash_btn = ctk.CTkButton(self.splash_frame, text="OPEN EXR FILE", command=self.open_file,
+                                        width=300, height=60, font=ctk.CTkFont(size=16, weight="bold"))
         self.splash_btn.pack(pady=20)
 
-        self.splash_hint = ctk.CTkLabel(self.splash_frame, text="Glissez-déposez ou cliquez pour commencer", 
+        self.splash_hint = ctk.CTkLabel(self.splash_frame, text="Drag & drop or click to start", 
                                         font=ctk.CTkFont(size=12), text_color="#555555")
         self.splash_hint.pack()
 
@@ -316,30 +310,30 @@ class FlycastViewer(ctk.CTk):
         self.info_box.see("end")
         print(text)
 
-    def show_loading(self, message="TRAITEMENT EN COURS..."):
+    def show_loading(self, message="PROCESSING..."):
         self.is_loading = True
         self.loading_label.configure(text=message)
-        self.open_button.configure(state="disabled", text="PATIENTEZ...")
+        self.open_button.configure(state="disabled", text="PLEASE WAIT...")
         self.loading_overlay.place(relx=0.5, rely=0.5, anchor="center")
         self.progress_bar.start()
 
     def hide_loading(self):
         self.is_loading = False
-        self.open_button.configure(state="normal", text="OUVRIR EXR")
+        self.open_button.configure(state="normal", text="OPEN EXR")
         self.loading_overlay.place_forget()
         self.progress_bar.stop()
 
     def cancel_loading(self):
         if self.is_loading:
             self.loader.cancel()
-            self.log("Demande d'annulation envoyée...")
+            self.log("Cancellation request sent...")
 
     def on_closing(self):
         self.loader.cancel()
         self.destroy()
 
     def _set_ui_visibility(self, visible):
-        """Affiche ou masque les panneaux latéraux de l'interface"""
+        """Show or hide the interface side panels"""
         if visible:
             self.nav_sidebar.grid()
             self.sidebar.grid()
@@ -353,13 +347,13 @@ class FlycastViewer(ctk.CTk):
         self.display_label.configure(cursor="")
         # Clear the fixed magnifier labels instead of hiding them
         self.magnifier_label.configure(image="")
-        self.value_info_label.configure(text="SURVOLEZ L'IMAGE", text_color="#777777")
+        self.value_info_label.configure(text="HOVER OVER IMAGE", text_color="#777777")
 
     def open_file(self):
         if self.is_loading: return
         path = filedialog.askopenfilename(initialdir=self.default_dir, filetypes=[("OpenEXR Files", "*.exr")])
         if path:
-            self.show_loading("CHARGEMENT DE L'EXR...")
+            self.show_loading("LOADING EXR...")
             self.loader.load(path)
 
     def _on_load_success(self, path, w, h, channels_data, available_channels, precomputed_images):
@@ -368,15 +362,15 @@ class FlycastViewer(ctk.CTk):
         self.available_channels = available_channels
         self.view_cache = precomputed_images  # Initialiser le cache avec les images pré-calculées
 
-        self.log(f"Fichier : {os.path.basename(path)}", clear=True)
-        self.log(f"Résolution : {w}x{h}")
-        self.log(f"Canaux trouvés : {', '.join(sorted(available_channels))}")
+        self.log(f"File: {os.path.basename(path)}", clear=True)
+        self.log(f"Resolution: {w}x{h}")
+        self.log(f"Channels found: {', '.join(sorted(available_channels))}")
 
         # Clear logo when EXR is loaded
         self.display_label.configure(image=None, text="")
         self.display_label.image = None
 
-        # Mise à jour des boutons composites
+        # Update composite buttons
         self._update_composite_buttons_state()
 
         for btn in self.channel_buttons: btn.destroy()
@@ -404,19 +398,19 @@ class FlycastViewer(ctk.CTk):
         if default_mode:
             self.update_view_mode(default_mode)
         
-        # Révéler l'UI une fois chargé
+        # Reveal UI once loaded
         self._set_ui_visibility(True)
 
     def _update_composite_buttons_state(self):
-        # Composite (RGB) nécessite Albedo.R, G, B
+        # Composite (RGB) requires Albedo.R, G, B
         has_rgb = all(c in self.available_channels for c in [Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B])
         self.composite_buttons["Composite (RGB)"].configure(state="normal" if has_rgb else "disabled")
         
-        # Normal Map nécessite Normal.X, Y, Z
+        # Normal Map requires Normal.X, Y, Z
         has_normals = all(c in self.available_channels for c in [Channels.NORMAL_X, Channels.NORMAL_Y, Channels.NORMAL_Z])
         self.composite_buttons["Normal Map"].configure(state="normal" if has_normals else "disabled")
         
-        # HUD (RGBA) nécessite HUD.R, G, B, A
+        # HUD (RGBA) requires HUD.R, G, B, A
         has_hud_rgba = all(c in self.available_channels for c in [Channels.HUD_R, Channels.HUD_G, Channels.HUD_B, Channels.HUD_A])
         self.composite_buttons["HUD (RGBA)"].configure(state="normal" if has_hud_rgba else "disabled")
 
@@ -431,13 +425,13 @@ class FlycastViewer(ctk.CTk):
 
     def _on_load_error(self, error_msg):
         self.hide_loading()
-        self.log(f"ERREUR : {error_msg}")
-        messagebox.showerror("Erreur Critique", f"Le chargement a échoué :\n{error_msg}")
+        self.log(f"ERROR: {error_msg}")
+        messagebox.showerror("Critical Error", f"Loading failed:\n{error_msg}")
         self._display_logo_if_no_image() # Re-display logo on error
 
     def _on_load_cancelled(self):
         self.hide_loading()
-        self.log("Chargement annulé.")
+        self.log("Loading cancelled.")
         self._display_logo_if_no_image() # Re-display logo on cancelled
 
     def _display_logo_if_no_image(self):
@@ -459,7 +453,7 @@ class FlycastViewer(ctk.CTk):
             self.update_view_mode(mode)
             return
 
-        self.show_loading(f"CALCUL : {mode}")
+        self.show_loading(f"CALCULATING: {mode}")
         self.after(10, lambda: self._process_view_mode(mode))
 
     def _process_view_mode(self, mode):
@@ -820,7 +814,7 @@ class FlycastViewer(ctk.CTk):
                 existing_data.update(export_data)
                 export_data = existing_data
             except Exception as e:
-                self.log(f"Erreur lecture fichier existant: {e}")
+                self.log(f"Error reading existing file: {e}")
 
         json_str = json.dumps(export_data, indent=2)
         
@@ -828,14 +822,14 @@ class FlycastViewer(ctk.CTk):
             if not path:
                 path = filedialog.asksaveasfilename(defaultextension=".json",
                                                      filetypes=[("JSON files", "*.json")],
-                                                     title="Sauvegarder HUD Compositor")
+                                                     title="Save HUD Compositor")
             if path:
                 with open(path, "w") as f:
                     f.write(json_str)
                 self.current_hud_path = path
                 self.hud_path_label.configure(text=os.path.basename(path))
                 self.save_hud_btn.configure(state="normal")
-                self.log(f"HUD Sauvegardé dans: {os.path.basename(path)}")
+                self.log(f"HUD Saved to: {os.path.basename(path)}")
         
     def save_hud_json(self):
         if self.current_hud_path:
@@ -848,11 +842,11 @@ class FlycastViewer(ctk.CTk):
 
     def load_hud_json(self):
         if not self.full_pil_image:
-            self.log("Chargez une image EXR avant d'importer le HUD.")
+            self.log("Please load an EXR image before importing HUD.")
             return
 
         file_path = filedialog.askopenfilename(filetypes=[("JSON files", "*.json")],
-                                               title="Charger HUD Compositor")
+                                               title="Load HUD Compositor")
         if not file_path: return
 
         try:
@@ -860,7 +854,7 @@ class FlycastViewer(ctk.CTk):
                 data = json.load(f)
             
             if "hud_zones" not in data:
-                self.log("Format JSON invalide (hud_zones manquante).")
+                self.log("Invalid JSON format (hud_zones missing).")
                 return
 
             orig_w, orig_h = self.image_size
@@ -906,10 +900,10 @@ class FlycastViewer(ctk.CTk):
             self.save_hud_btn.configure(state="normal")
             self.select_hud_rect(-1)
             self.refresh_image_display()
-            self.log(f"HUD Chargé: {os.path.basename(file_path)} ({len(new_hud_rects)} zones)")
+            self.log(f"HUD Loaded: {os.path.basename(file_path)} ({len(new_hud_rects)} zones)")
             
         except Exception as e:
-            self.log(f"Erreur lors du chargement: {e}")
+            self.log(f"Error during loading: {e}")
             print(f"Load Error: {e}")
 
     def select_hud_rect(self, idx):
@@ -967,7 +961,7 @@ class FlycastViewer(ctk.CTk):
             display_text = f"{self.current_view_mode}: {self.current_pixel_value}"
             self.inspect_entry.delete(0, "end")
             self.inspect_entry.insert(0, display_text)
-            self.log(f"Inspecté : {display_text}")
+            self.log(f"Inspected: {display_text}")
             
             # Update Poly Routing JSON if data is available
             self.last_clicked_event = event
@@ -1006,9 +1000,9 @@ class FlycastViewer(ctk.CTk):
         if json_content.strip():
             self.clipboard_clear()
             self.clipboard_append(json_content)
-            self.log("JSON copié dans le presse-papier !")
+            self.log("JSON copied to clipboard!")
         else:
-            self.log("Rien à copier (cliquez sur l'image d'abord)")
+            self.log("Nothing to copy (click on the image first)")
 
     def update_magnifier(self, event):
         # Update cursor for HUD if applicable

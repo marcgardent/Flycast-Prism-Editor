@@ -23,10 +23,10 @@ class EXRLoader:
     def _load_thread(self, path):
         try:
             if self.on_progress:
-                self.on_progress("Lecture du fichier EXR...")
+                self.on_progress("Reading EXR file...")
             input_file = oiio.ImageInput.open(path)
             if not input_file:
-                raise Exception(f"Impossible d'ouvrir le fichier : {oiio.geterror()}")
+                raise Exception(f"Cannot open file: {oiio.geterror()}")
 
             if self.cancel_event.is_set():
                 input_file.close()
@@ -58,7 +58,7 @@ class EXRLoader:
                 channel_array = input_file.read_image(chbegin=i, chend=i+1, format=native_format)
                 
                 if channel_array is None:
-                    raise Exception(f"Erreur lors de la lecture du canal {name}.")
+                    raise Exception(f"Error reading channel {name}.")
                 
                 # Squeeze to remove the channel dimension if it's 1
                 channel_array = channel_array.squeeze()
@@ -78,7 +78,7 @@ class EXRLoader:
             channels_data = raw_data_dict
             available_channels = list(raw_data_dict.keys())
             
-            # Pre-calcul des images composites et par canal
+            # Pre-compute composite and per-channel images
             precomputed_images = {}
             modes_to_compute = ImageProcessor.get_available_composite_modes(available_channels)
             modes_to_compute.extend(available_channels)
@@ -89,7 +89,7 @@ class EXRLoader:
                     self.on_cancelled()
                     return
                 if self.on_progress:
-                    self.on_progress(f"Pré-calcul : {mode} ({i+1}/{total_modes})...")
+                    self.on_progress(f"Pre-computing: {mode} ({i+1}/{total_modes})...")
                 
                 # Precompute the view mode 
                 precomputed_images[mode] = ImageProcessor.process_view_mode(mode, (w, h), channels_data)

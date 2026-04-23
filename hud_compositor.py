@@ -23,7 +23,7 @@ class Anchor(Enum):
 class HudCompositor:
     VIRT_W = 640
     VIRT_H = 480
-    PADDING = 50 # Marge intérieure pour éviter le clipping des losanges
+    PADDING = 50 # Inner margin to prevent diamond clipping
 
     @staticmethod
     def get_anchor_table(screenW, screenH):
@@ -86,8 +86,8 @@ class HudCompositor:
 
     @staticmethod
     def draw_overlay(pil_image, user_rects=None, selected_idx=-1, mode="SOURCE"):
-        # On crée une nouvelle image avec du padding pour que les losanges aux bords soient visibles
-        padded_img = ImageOps.expand(pil_image, border=HudCompositor.PADDING, fill=(10, 10, 10)) # Fond très sombre pour le padding
+        # Create a new image with padding so diamonds at the edges are visible
+        padded_img = ImageOps.expand(pil_image, border=HudCompositor.PADDING, fill=(10, 10, 10)) # Very dark background for padding
         draw = ImageDraw.Draw(padded_img)
         
         orig_w, orig_h = pil_image.size

@@ -1,4 +1,4 @@
-# Liste des canaux définis dans le référentiel technique Flycast
+# List of channels defined in the Flycast technical specification
 
 class Channels:
     ALBEDO_R = 'R'

@@ -26,7 +26,7 @@ class ImageProcessor:
 
     @staticmethod
     def _apply_hash_color(ids_array):
-        """Applique l'algorithme de hashColor officiel Flycast."""
+        """Applies the official Flycast hashColor algorithm."""
         # ids_array should be a numpy array (uint32 or uint64)
         ids_32 = ids_array.astype(np.uint32)
         
@@ -186,7 +186,7 @@ class ImageProcessor:
         return "N/A"
     @staticmethod
     def get_pixel_metadata(px, py, exr_data):
-        """Récupère toutes les métadonnées pour le Poly Routing."""
+        """Retrieves all metadata for Poly Routing."""
         if not exr_data: return None
         
         metadata = {}
