@@ -123,9 +123,9 @@ class FlycastViewer(ctk.CTk):
         )
 
         # Grid Configuration (3 columns)
-        self.grid_columnconfigure(0, weight=0) # Controls / Tools (Left)
-        self.grid_columnconfigure(1, weight=1) # Image Area (Flexible - Center)
-        self.grid_columnconfigure(2, weight=0) # Navigation / Tabs (Right)
+        self.grid_columnconfigure(0, weight=0, minsize=350) # Controls / Tools (Left)
+        self.grid_columnconfigure(1, weight=1)              # Image Area (Flexible - Center)
+        self.grid_columnconfigure(2, weight=0, minsize=320) # Navigation / Tabs (Right)
         self.grid_rowconfigure(0, weight=1)
 
         self._setup_nav_sidebar()
@@ -141,7 +141,7 @@ class FlycastViewer(ctk.CTk):
     def _setup_nav_sidebar(self):
         self.nav_sidebar = ctk.CTkFrame(self, width=320, corner_radius=0, border_width=1, border_color="#222222")
         self.nav_sidebar.grid(row=0, column=2, sticky="nsew")
-        self.nav_sidebar.grid_propagate(False)
+        self.nav_sidebar.grid_remove() # Hide initially for splash screen
 
         # Composite Modes (Moved above tabs for quick access)
         ctk.CTkLabel(self.nav_sidebar, text="COMPOSITE MODES", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(20, 5))
@@ -170,7 +170,7 @@ class FlycastViewer(ctk.CTk):
     def _setup_sidebar(self):
         self.sidebar = ctk.CTkFrame(self, width=350, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
-        self.sidebar.grid_propagate(False)
+        self.sidebar.grid_remove() # Hide initially for splash screen
 
         # Header with Logo
         if self.logo_image:
@@ -526,13 +526,30 @@ class FlycastViewer(ctk.CTk):
         if hasattr(self, "_resize_after_id") and self._resize_after_id:
             self.after_cancel(self._resize_after_id)
         
-        self._resize_after_id = self.after(50, self._perform_resize_refresh)
+        self._resize_after_id = self.after(100, self._perform_resize_refresh)
 
     def _perform_resize_refresh(self):
         self._resize_after_id = None
         
-        # Force a single update call here if needed, but safely
+        # Force layout update safely outside the event loop
         self.update_idletasks()
+        
+        # Refresh sidebars only if they are currently visible
+        if self.sidebar.winfo_viewable():
+            # Forceful grid toggle to "wake up" the layout engine (critical for KDE maximization)
+            self.sidebar.grid_remove()
+            self.nav_sidebar.grid_remove()
+            
+            # Let the grid settle for a micro-second
+            self.update_idletasks()
+            
+            # Restore with original grid parameters
+            self.sidebar.grid(row=0, column=0, sticky="nsew")
+            self.nav_sidebar.grid(row=0, column=2, sticky="nsew")
+            
+            # Final UI synchronization
+            self.nav_sidebar.update()
+            self.sidebar.update()
         
         if self.last_numpy_image is not None and not self.is_loading:
             self.refresh_image_display()
