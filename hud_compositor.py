@@ -65,6 +65,15 @@ class HudCompositor:
             draw.line([start, end], fill=color, width=width)
 
     @staticmethod
+    def draw_dotted_rect(draw, rect, color="white", width=1, dash_length=5):
+        x1, y1, x2, y2 = rect
+        # Draw 4 segments
+        HudCompositor.draw_dotted_line(draw, (x1, y1), (x2, y1), color, width, dash_length)
+        HudCompositor.draw_dotted_line(draw, (x2, y1), (x2, y2), color, width, dash_length)
+        HudCompositor.draw_dotted_line(draw, (x2, y2), (x1, y2), color, width, dash_length)
+        HudCompositor.draw_dotted_line(draw, (x1, y2), (x1, y1), color, width, dash_length)
+
+    @staticmethod
     def draw_diamond(draw, center, size=10, color="green", fill=None):
         x, y = center
         points = [
@@ -116,8 +125,24 @@ class HudCompositor:
             
         # 3. User Rectangles
         if user_rects:
+            # Overlap detection
+            overlapping_indices = set()
+            for i in range(len(user_rects)):
+                for j in range(i + 1, len(user_rects)):
+                    r1, r2 = user_rects[i], user_rects[j]
+                    x1 = r1["sx"] if mode == "SOURCE" else r1["dx"]
+                    y1 = r1["sy"] if mode == "SOURCE" else r1["dy"]
+                    x2 = r2["sx"] if mode == "SOURCE" else r2["dx"]
+                    y2 = r2["sy"] if mode == "SOURCE" else r2["dy"]
+                    
+                    if not (x1 + r1["w"] <= x2 or x2 + r2["w"] <= x1 or 
+                            y1 + r1["h"] <= y2 or y2 + r2["h"] <= y1):
+                        overlapping_indices.add(i)
+                        overlapping_indices.add(j)
+
             for i, r in enumerate(user_rects):
                 is_selected = (i == selected_idx)
+                is_overlapping = (i in overlapping_indices)
                 color = "#f1c40f" if is_selected else "#e67e22" # Yellow if selected, Orange otherwise
                 width = 3 if is_selected else 2
                 
@@ -128,7 +153,12 @@ class HudCompositor:
                     rx, ry = r["dx"] + p, r["dy"] + p
                     
                 rw, rh = r["w"], r["h"]
-                draw.rectangle([rx, ry, rx + rw, ry + rh], outline=color, width=width)
+                
+                # Draw border (dotted if overlapping)
+                if is_overlapping:
+                    HudCompositor.draw_dotted_rect(draw, [rx, ry, rx + rw, ry + rh], color=color, width=width)
+                else:
+                    draw.rectangle([rx, ry, rx + rw, ry + rh], outline=color, width=width)
                 
                 # Draw name
                 draw.text((rx + 5, ry + 5), r.get("name", f"Rect {i}"), fill=color)
