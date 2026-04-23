@@ -187,8 +187,17 @@ class FlycastViewer(ctk.CTk):
         # Inspector Section
         ctk.CTkLabel(self.sidebar, text="INSPECTOR (IMAGE CLICK)", font=ctk.CTkFont(size=13, weight="bold")).pack(
             pady=(25, 5))
-        self.inspect_entry = ctk.CTkEntry(self.sidebar, placeholder_text="Value copied here...", height=35)
-        self.inspect_entry.pack(pady=5, padx=20, fill="x")
+        self.inspect_table_frame = ctk.CTkFrame(self.sidebar, fg_color="#1a1a1a", corner_radius=8, border_width=1, border_color="#333333")
+        self.inspect_table_frame.pack(pady=5, padx=20, fill="x")
+        
+        self.inspect_placeholder = ctk.CTkLabel(self.inspect_table_frame, text="CLICK ON IMAGE TO INSPECT", font=ctk.CTkFont(family="Consolas", size=11),
+                                             text_color="#777777")
+        self.inspect_placeholder.pack(pady=20)
+
+        self.copy_all_btn = ctk.CTkButton(self.sidebar, text="COPY ALL VALUES", command=self.copy_all_inspected, 
+                                          height=28, fg_color="#34495e", hover_color="#2c3e50")
+        self.copy_all_btn.pack(pady=(5, 0), padx=20, fill="x")
+        self.copy_all_btn.configure(state="disabled")
 
         # Magnifier Panel (Fixed in sidebar)
         self.magnifier_frame = ctk.CTkFrame(self.sidebar, fg_color="#1a1a1a", corner_radius=8, border_width=1, border_color="#333333", height=360)
@@ -200,9 +209,12 @@ class FlycastViewer(ctk.CTk):
         self.magnifier_label = ctk.CTkLabel(self.magnifier_frame, text="", fg_color="black", width=240, height=240)
         self.magnifier_label.pack(pady=10, padx=10)
         
-        self.value_info_label = ctk.CTkLabel(self.magnifier_frame, text="HOVER OVER IMAGE", font=ctk.CTkFont(family="Consolas", size=11),
-                                             fg_color="transparent", text_color="#3498db", wraplength=250)
-        self.value_info_label.pack(pady=(0, 10), padx=10)
+        self.info_grid_frame = ctk.CTkFrame(self.magnifier_frame, fg_color="transparent")
+        self.info_grid_frame.pack(pady=(0, 10), padx=10, fill="x")
+        
+        self.value_info_label = ctk.CTkLabel(self.info_grid_frame, text="HOVER OVER IMAGE", font=ctk.CTkFont(family="Consolas", size=11),
+                                             text_color="#777777")
+        self.value_info_label.grid(row=0, column=0, columnspan=2, sticky="ew")
 
         # Appearance mode
         self.appearance_mode_label = ctk.CTkLabel(self.sidebar, text="Appearance Mode:", anchor="w")
@@ -380,7 +392,8 @@ class FlycastViewer(ctk.CTk):
             self.display_label.configure(cursor="")
         # Clear the fixed magnifier labels instead of hiding them
         self.magnifier_label.configure(image=None)
-        self.value_info_label.configure(text="HOVER OVER IMAGE", text_color="#777777")
+        self.current_pixel_value = {} # Clear data
+        self._update_info_table({})
 
     def open_file(self):
         if self.is_loading: return
@@ -939,11 +952,13 @@ class FlycastViewer(ctk.CTk):
             btn.pack(fill="x", pady=1)
 
     def on_image_click(self, event):
-        if self.current_pixel_value != "N/A":
-            display_text = self.current_pixel_value
-            self.inspect_entry.delete(0, "end")
-            self.inspect_entry.insert(0, display_text)
-            self.log(f"Inspected: {display_text}")
+        if self.current_pixel_value:
+            self._update_inspect_table(self.current_pixel_value)
+            self.copy_all_btn.configure(state="normal")
+            
+            # Summary for log
+            summary = " | ".join([f"{k}:{v}" for k, v in self.current_pixel_value.items()])
+            self.log(f"Inspected: {summary}")
             
             # Update Poly Routing JSON if data is available
             self.last_clicked_event = event
@@ -1018,7 +1033,9 @@ class FlycastViewer(ctk.CTk):
         if 0 <= orig_x < orig_w and 0 <= orig_y < orig_h:
             self.current_pixel_value = ImageProcessor.get_pixel_raw_values(orig_x, orig_y, self.current_exr_data)
         else:
-            self.current_pixel_value = "N/A"
+            self.current_pixel_value = {}
+
+        self._update_info_table(self.current_pixel_value)
 
         m_half = self.magnifier_size // 2
         left, top = max(0, orig_x - m_half), max(0, orig_y - m_half)
@@ -1040,9 +1057,60 @@ class FlycastViewer(ctk.CTk):
 
             self.magnifier_label.configure(image=zoom_ctk)
             self.magnifier_label.image = zoom_ctk # Keep reference
-            self.value_info_label.configure(text=f" {self.current_pixel_value} ", text_color="#3498db")
         except Exception:
             self.hide_magnifier()
+
+    def _update_inspect_table(self, data):
+        """Updates the inspector grid with clicked pixel data."""
+        for child in self.inspect_table_frame.winfo_children():
+            child.destroy()
+        
+        if not data:
+            self.inspect_placeholder = ctk.CTkLabel(self.inspect_table_frame, text="CLICK ON IMAGE TO INSPECT", 
+                                                    font=ctk.CTkFont(family="Consolas", size=11), text_color="#777777")
+            self.inspect_placeholder.pack(pady=20)
+            return
+
+        # Use a sub-frame for the grid to allow padding/centering
+        grid_container = ctk.CTkFrame(self.inspect_table_frame, fg_color="transparent")
+        grid_container.pack(pady=10, padx=10, fill="x")
+
+        for i, (key, val) in enumerate(data.items()):
+            k_lbl = ctk.CTkLabel(grid_container, text=f"{key}:", font=ctk.CTkFont(family="Consolas", size=10, weight="bold"), 
+                                 text_color="#aaaaaa", anchor="w")
+            k_lbl.grid(row=i, column=0, sticky="w", padx=(0, 10))
+            
+            v_lbl = ctk.CTkLabel(grid_container, text=val, font=ctk.CTkFont(family="Consolas", size=10), 
+                                 text_color="#2ecc71", anchor="w") # Green color for inspected values
+            v_lbl.grid(row=i, column=1, sticky="w")
+
+    def copy_all_inspected(self):
+        """Copies current inspected data to clipboard."""
+        if self.current_pixel_value:
+            summary = " | ".join([f"{k}:{v}" for k, v in self.current_pixel_value.items()])
+            self.clipboard_clear()
+            self.clipboard_append(summary)
+            self.log("All values copied to clipboard!")
+
+    def _update_info_table(self, data):
+        """Updates the grid of labels with pixel data."""
+        # Clear current grid
+        for child in self.info_grid_frame.winfo_children():
+            child.destroy()
+        
+        if not data:
+            lbl = ctk.CTkLabel(self.info_grid_frame, text="HOVER OVER IMAGE", font=ctk.CTkFont(family="Consolas", size=11), text_color="#777777")
+            lbl.grid(row=0, column=0, columnspan=2, sticky="ew")
+            return
+
+        for i, (key, val) in enumerate(data.items()):
+            k_lbl = ctk.CTkLabel(self.info_grid_frame, text=f"{key}:", font=ctk.CTkFont(family="Consolas", size=10, weight="bold"), 
+                                 text_color="#aaaaaa", anchor="w")
+            k_lbl.grid(row=i, column=0, sticky="w", padx=(0, 10))
+            
+            v_lbl = ctk.CTkLabel(self.info_grid_frame, text=val, font=ctk.CTkFont(family="Consolas", size=10), 
+                                 text_color="#3498db", anchor="w")
+            v_lbl.grid(row=i, column=1, sticky="w")
 
     def _change_appearance_mode_event(self, new_appearance_mode: str):
         ctk.set_appearance_mode(new_appearance_mode)

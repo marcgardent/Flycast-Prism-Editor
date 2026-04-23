@@ -112,59 +112,55 @@ class ImageProcessor:
 
     @staticmethod
     def get_pixel_raw_values(px, py, exr_data):
-        if not exr_data: return "N/A"
+        if not exr_data: return {}
         try:
-            groups = []
+            data = {}
 
             # 1. Albedo RGB
             if all(c in exr_data for c in [Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B]):
                 r, g, b = exr_data[Channels.ALBEDO_R][py, px], exr_data[Channels.ALBEDO_G][py, px], exr_data[Channels.ALBEDO_B][py, px]
-                groups.append(f"RGB:({r:.2f}, {g:.2f}, {b:.2f})")
+                data["RGB"] = f"({r:.3f}, {g:.3f}, {b:.3f})"
 
             # 2. Normal Map
             if all(c in exr_data for c in [Channels.NORMAL_X, Channels.NORMAL_Y, Channels.NORMAL_Z]):
                 nx, ny, nz = exr_data[Channels.NORMAL_X][py, px], exr_data[Channels.NORMAL_Y][py, px], exr_data[Channels.NORMAL_Z][py, px]
-                groups.append(f"Norm:({nx:.2f}, {ny:.2f}, {nz:.2f})")
+                data["Normals"] = f"({nx:.3f}, {ny:.3f}, {nz:.3f})"
 
             # 3. Depth
             if Channels.DEPTH_Z in exr_data:
                 z = exr_data[Channels.DEPTH_Z][py, px]
-                groups.append(f"Z:{z:.4f}")
+                data["Depth"] = f"{z:.6f}"
 
             # 4. Material ID
             if Channels.MATERIAL_ID in exr_data:
                 val = int(exr_data[Channels.MATERIAL_ID][py, px])
-                groups.append(f"ID:{val}")
+                data["MatID"] = str(val)
 
             # 5. HUD
             if all(c in exr_data for c in [Channels.HUD_R, Channels.HUD_G, Channels.HUD_B, Channels.HUD_A]):
                 hr, hg, hb, ha = exr_data[Channels.HUD_R][py, px], exr_data[Channels.HUD_G][py, px], exr_data[Channels.HUD_B][py, px], exr_data[Channels.HUD_A][py, px]
-                groups.append(f"HUD:({hr:.2f}, {hg:.2f}, {hb:.2f}, {ha:.2f})")
+                data["HUD"] = f"({hr:.2f}, {hg:.2f}, {hb:.2f}, {ha:.2f})"
 
-            # 6. Metadata (Pos, Hash, Poly)
-            meta_parts = []
+            # 6. Metadata
             if all(c in exr_data for c in [Channels.METADATA_WORLDPOS_X, Channels.METADATA_WORLDPOS_Y, Channels.METADATA_WORLDPOS_Z]):
                 px_val = exr_data[Channels.METADATA_WORLDPOS_X][py, px]
                 py_val = exr_data[Channels.METADATA_WORLDPOS_Y][py, px]
                 pz_val = exr_data[Channels.METADATA_WORLDPOS_Z][py, px]
-                meta_parts.append(f"Pos:({px_val:.1f}, {py_val:.1f}, {pz_val:.1f})")
+                data["WorldPos"] = f"({px_val:.2f}, {py_val:.2f}, {pz_val:.2f})"
             
             if Channels.METADATA_TEXTURE_HASH in exr_data:
                 th = int(exr_data[Channels.METADATA_TEXTURE_HASH][py, px])
-                meta_parts.append(f"Hash:0x{th:08X}")
+                data["TexHash"] = f"0x{th:08X}"
             
             if Channels.METADATA_POLY_COUNT in exr_data:
                 pc = int(exr_data[Channels.METADATA_POLY_COUNT][py, px])
-                meta_parts.append(f"Poly:{pc}")
-            
-            if meta_parts:
-                groups.append(" ".join(meta_parts))
+                data["PolyCnt"] = str(pc)
 
-            return " | ".join(groups) if groups else "N/A"
+            return data
 
         except Exception as e:
             print(f"Picker Error: {e}")
-        return "N/A"
+        return {}
     @staticmethod
     def get_pixel_metadata(px, py, exr_data):
         """Retrieves all metadata for Poly Routing."""
