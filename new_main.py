@@ -30,7 +30,7 @@ class FlycastApp:
         # 4. Populate the callbacks that UI components expect
         self.callbacks['on_open_click'] = self.main_ctrl.on_open_click
         self.callbacks['on_cancel'] = self.main_ctrl.on_cancel
-        self.callbacks['on_resize'] = lambda event: self.main_ctrl.refresh_image_display()
+        self.callbacks['on_resize'] = lambda event=None: self.main_ctrl.refresh_image_display()
         
         # Interaction callbacks
         self.callbacks['on_mouse_down'] = self.interaction_ctrl.on_mouse_down

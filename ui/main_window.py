@@ -42,6 +42,7 @@ class MainWindow(ctk.CTk):
         # Center Area
         self.center_container = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
         self.center_container.grid(row=0, column=1, sticky="nsew")
+        self.center_container.pack_propagate(False)
         
         self.image_area = ImageAreaComponent(self.center_container, self.callbacks)
         self.image_area.pack(fill="both", expand=True)
@@ -113,3 +114,9 @@ class MainWindow(ctk.CTk):
                     pass
         except Exception as e:
             print(f"Maximization failed: {e}")
+
+    def _get_window_scaling(self):
+        try:
+            return self.winfo_fpixels('1i') / 96.0
+        except Exception:
+            return 1.0
