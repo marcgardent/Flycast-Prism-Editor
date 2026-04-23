@@ -1,0 +1,150 @@
+{
+  "gdi" : "[GDI] Test Drive Le Mans (US)",
+  "routing": [
+  {
+    "name": "First sprite of HUD : trigger the HudPass",
+    "match": { "texHash": "0xA48D0656" },
+    "actions": ["startHudPass"]
+  },
+  {
+    "name": "HUD Element draw in the 3dScene : force to HUD buffer",
+    "match": { "x": 572, "y": 226, "z": 0.513, "count": 19 },
+    "actions": ["toHud"]
+  },
+  {
+    "name": "Sky 1",
+    "match": {
+      "_x": 35099604.0,
+      "_y": -3369626.5,
+      "_z": 1.0,
+      "_count": 362,
+      "texHash": "0x6EB74186"
+    },
+    "actions": ["avoidNormal", "avoidDepth"]
+  },
+  {
+  "name": "Sky2",
+  "match": {
+    "_x": 320.6588439941406,
+    "_y": 61.91947937011719,
+    "_z": 5.894828063901514e-05,
+    "_count": 42,
+    "texHash": "0x06C24973"
+  },
+  "actions": ["avoidNormal", "avoidDepth"]
+  },
+  {
+    "name": "Sky3",
+    "match": {
+      "_x": 320.4251708984375,
+      "_y": 136.81704711914062,
+      "_z": 5.727973984903656e-05,
+      "_count": 61,
+      "texHash": "0xA87DD717"
+    },
+    "actions": ["avoidNormal", "avoidDepth"]
+  }
+],
+    "safe_zone": {
+    "w": 640,
+    "h": 480
+  },
+  "hud_zones": [
+    {
+      "name": "laps",
+      "w": 200,
+      "h": 173,
+      "zen_mode": false,
+      "source": {
+        "x": -320,
+        "y": -240,
+        "anchor": "SCREEN_CENTER"
+      },
+      "mapping": {
+        "x": 0,
+        "y": 0,
+        "anchor": "SCREEN_TOP_LEFT"
+      }
+    },
+    {
+      "name": "board",
+      "w": 215,
+      "h": 148,
+      "zen_mode": true,
+      "source": {
+        "x": 105,
+        "y": 92,
+        "anchor": "SCREEN_CENTER"
+      },
+      "mapping": {
+        "x": -215,
+        "y": -148,
+        "anchor": "SCREEN_BOTTOM_RIGHT"
+      }
+    },
+    {
+      "name": "position",
+      "w": 132,
+      "h": 237,
+      "zen_mode": false,
+      "source": {
+        "x": -320,
+        "y": 3,
+        "anchor": "SCREEN_CENTER"
+      },
+      "mapping": {
+        "x": 0,
+        "y": -237,
+        "anchor": "SCREEN_BOTTOM_LEFT"
+      }
+    },
+    {
+      "name": "track",
+      "w": 197,
+      "h": 153,
+      "zen_mode": false,
+      "source": {
+        "x": 123,
+        "y": -236,
+        "anchor": "SCREEN_CENTER"
+      },
+      "mapping": {
+        "x": -197,
+        "y": 0,
+        "anchor": "SCREEN_TOP_RIGHT"
+      }
+    },
+    {
+      "name": "tyres",
+      "w": 92,
+      "h": 94,
+      "zen_mode": false,
+      "source": {
+        "x": 228,
+        "y": -44,
+        "anchor": "SCREEN_CENTER"
+      },
+      "mapping": {
+        "x": -92,
+        "y": -48,
+        "anchor": "SCREEN_RIGHT_MID"
+      }
+    },
+    {
+      "name": "infos",
+      "w": 242,
+      "h": 312,
+      "zen_mode": true,
+      "source": {
+        "x": -120,
+        "y": -239,
+        "anchor": "SCREEN_CENTER"
+      },
+      "mapping": {
+        "x": -122,
+        "y": 0,
+        "anchor": "SCREEN_TOP_MID"
+      }
+    }
+  ]
+}
