@@ -511,8 +511,10 @@ class FlycastViewer(ctk.CTk):
 
 
     def on_resize(self, event=None):
-        # Force layout update to ensure dimensions are fresh (critical for KDE maximization)
-        self.update_idletasks()
+        # Only process resize events for the root window to avoid RecursionError
+        # (Binding to root window catches events for all children, leading to recursion)
+        if event and event.widget != self:
+            return
 
         # Prevent jitter by checking if the actual dimensions changed
         cont_w, cont_h = self.image_container.winfo_width(), self.image_container.winfo_height()
@@ -520,13 +522,21 @@ class FlycastViewer(ctk.CTk):
             return
         self._last_size = (cont_w, cont_h)
         
-        # Force sidebar refresh
-        self.nav_sidebar.update()
-        self.sidebar.update()
+        # Debounce the refresh to allow layout to settle
+        if hasattr(self, "_resize_after_id") and self._resize_after_id:
+            self.after_cancel(self._resize_after_id)
+        
+        self._resize_after_id = self.after(50, self._perform_resize_refresh)
 
+    def _perform_resize_refresh(self):
+        self._resize_after_id = None
+        
+        # Force a single update call here if needed, but safely
+        self.update_idletasks()
+        
         if self.last_numpy_image is not None and not self.is_loading:
             self.refresh_image_display()
-        elif self.last_numpy_image is None and self.logo_image: # Resize logo if no image is loaded
+        elif self.last_numpy_image is None and self.logo_image:
             self._display_logo_if_no_image()
 
 
