@@ -131,10 +131,23 @@ class ImageProcessor:
                 z = exr_data[Channels.DEPTH_Z][py, px]
                 data["Depth"] = f"{z:.6f}"
 
-            # 4. Material ID
+            # 4. Material ID (Detailed Decoding)
             if Channels.MATERIAL_ID in exr_data:
                 val = int(exr_data[Channels.MATERIAL_ID][py, px])
                 data["MatID"] = str(val)
+                
+                if val > 0: # Only show details if not background
+                    # Bit decoding
+                    list_type_val = (val >> 4) & 0b111
+                    has_texture = (val >> 3) & 1
+                    is_gouraud = (val >> 2) & 1
+                    has_bumpmap = (val >> 1) & 1
+                    fog_ctrl = val & 1
+
+                    list_type_map = {0: "Opaque", 1: "Opaque Mod", 2: "Translucent", 3: "Translucent Mod", 4: "Punch-Through"}
+                    data["MatList"] = list_type_map.get(list_type_val, f"Type {list_type_val}")
+                    data["MatFlags"] = f"{'Tex ' if has_texture else ''}{'Gour ' if is_gouraud else ''}{'Bump ' if has_bumpmap else ''}{'Fog' if fog_ctrl else ''}".strip()
+                    if not data["MatFlags"]: data["MatFlags"] = "None"
 
             # 5. HUD
             if all(c in exr_data for c in [Channels.HUD_R, Channels.HUD_G, Channels.HUD_B, Channels.HUD_A]):
