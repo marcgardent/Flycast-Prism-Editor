@@ -28,9 +28,13 @@ class Channels:
 
 
 STANDARD_CHANNELS = [
-    Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B,
+    Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B, Channels.ALBEDO_A,
     Channels.NORMAL_X, Channels.NORMAL_Y, Channels.NORMAL_Z,
     Channels.DEPTH_Z, Channels.MATERIAL_ID, Channels.SSAO_AO,
     Channels.METADATA_WORLDPOS_X, Channels.METADATA_WORLDPOS_Y, Channels.METADATA_WORLDPOS_Z,
-    Channels.METADATA_TEXTURE_HASH, Channels.METADATA_POLY_COUNT
+    Channels.METADATA_TEXTURE_HASH, Channels.METADATA_POLY_COUNT,
+    Channels.HUD_R,
+    Channels.HUD_G,
+    Channels.HUD_B,
+    Channels.HUD_A
 ]

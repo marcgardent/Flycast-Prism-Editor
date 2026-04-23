@@ -9,6 +9,7 @@ except Exception:
 
 import os
 import customtkinter as ctk
+import tkinter as tk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageOps, ImageDraw
 import numpy as np
@@ -50,7 +51,7 @@ class FlycastViewer(ctk.CTk):
         # To check if Tkinter is linked to Xft: root.eval("tk::pkgconfig get fontsystem")
         # If it returns "xft", font rendering will be sharp. Otherwise ("x11"), they will be pixelated.
 
-        self.title("Flycast G-Buffer Viewer")
+        self.title("Flycast Prism Editor")
         self.geometry("1500x900")
 
         # Application State
@@ -79,9 +80,17 @@ class FlycastViewer(ctk.CTk):
         # Logo
         self.logo_image = None
         self.logo_path = os.path.join(os.path.dirname(__file__), "assets", "logo-prism.png")
+        self.icon_path = os.path.join(os.path.dirname(__file__), "assets", "logo-prism.ico")
         try:
             pil_logo = Image.open(self.logo_path)
-            self.logo_image = ctk.CTkImage(light_image=pil_logo, dark_image=pil_logo, size=(pil_logo.width, pil_logo.height))
+            # Resize for sidebar header (maintain aspect ratio)
+            h = 60
+            w = int(pil_logo.width * (h / pil_logo.height))
+            self.logo_image = ctk.CTkImage(light_image=pil_logo, dark_image=pil_logo, size=(w, h))
+            
+            # Set window icon
+            if os.path.exists(self.icon_path):
+                self.after(200, lambda: self.iconbitmap(self.icon_path))
         except FileNotFoundError:
             print(f"Logo file not found at {self.logo_path}. Continuing without logo.")
         except Exception as e:
@@ -147,8 +156,13 @@ class FlycastViewer(ctk.CTk):
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_propagate(False)
 
-        self.logo_label = ctk.CTkLabel(self.sidebar, text="FLYCAST G-BUFFER", font=ctk.CTkFont(family="Inter", size=24, weight="bold"))
-        self.logo_label.pack(pady=(30, 25), padx=20)
+        # Header with Logo
+        if self.logo_image:
+             self.logo_img_label = ctk.CTkLabel(self.sidebar, image=self.logo_image, text="")
+             self.logo_img_label.pack(pady=(20, 0))
+
+        self.logo_label = ctk.CTkLabel(self.sidebar, text="Flycast Prism Editor", font=ctk.CTkFont(family="Inter", size=18, weight="bold"))
+        self.logo_label.pack(pady=(5, 20), padx=20)
 
         self.open_button = ctk.CTkButton(self.sidebar, text="OPEN EXR", command=self.open_file,
                                          height=45, font=ctk.CTkFont(size=13, weight="bold"))
