@@ -50,13 +50,44 @@ class MainController:
         self.log(f"Resolution: {w}x{h}")
         self.log(f"Channels found: {', '.join(sorted(available_channels))}")
 
+        self._update_composite_buttons_state()
+        self.ui.nav_sidebar.update_channel_buttons(available_channels, STANDARD_CHANNELS)
+
         self._hide_loading()
         
         # Update UI visibility
         self.ui.set_ui_visibility(True)
         
         # We need to trigger an initial mode update
-        self.safe_update_view_mode("Composite (RGB)")
+        default_mode = "Composite (RGB)"
+        if self.ui.nav_sidebar.composite_buttons[default_mode].cget("state") == "disabled":
+            if self.state.available_channels:
+                default_mode = sorted(self.state.available_channels)[0]
+            else:
+                default_mode = None
+        
+        if default_mode:
+            self.safe_update_view_mode(default_mode)
+
+    def _update_composite_buttons_state(self):
+        btns = self.ui.nav_sidebar.composite_buttons
+        av = self.state.available_channels
+        
+        has_rgb = all(c in av for c in [Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B])
+        btns["Composite (RGB)"].configure(state="normal" if has_rgb else "disabled")
+        
+        has_normals = all(c in av for c in [Channels.NORMAL_X, Channels.NORMAL_Y, Channels.NORMAL_Z])
+        btns["Normal Map"].configure(state="normal" if has_normals else "disabled")
+        
+        has_hud_rgba = all(c in av for c in [Channels.HUD_R, Channels.HUD_G, Channels.HUD_B, Channels.HUD_A])
+        btns["HUD (RGBA)"].configure(state="normal" if has_hud_rgba else "disabled")
+
+        metadata_channels = [
+            Channels.METADATA_WORLDPOS_X, Channels.METADATA_WORLDPOS_Y, Channels.METADATA_WORLDPOS_Z,
+            Channels.METADATA_TEXTURE_HASH, Channels.METADATA_POLY_COUNT
+        ]
+        has_metadata = any(c in av for c in metadata_channels)
+        btns["Metadata"].configure(state="normal" if has_metadata else "disabled")
 
     def _on_load_error(self, error_msg):
         self._hide_loading()

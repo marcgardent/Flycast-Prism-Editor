@@ -23,6 +23,10 @@ class FlycastApp:
         self.interaction_ctrl = InteractionController(self.main_ctrl)
         self.hud_ctrl = HUDController(self.main_ctrl)
         
+        # Link controllers to main controller so they can cross-reference
+        self.main_ctrl.interaction_ctrl = self.interaction_ctrl
+        self.main_ctrl.hud_ctrl = self.hud_ctrl
+        
         # 4. Populate the callbacks that UI components expect
         self.callbacks['on_open_click'] = self.main_ctrl.on_open_click
         self.callbacks['on_cancel'] = self.main_ctrl.on_cancel
@@ -38,6 +42,19 @@ class FlycastApp:
         # Missing Sidebar buttons
         self.callbacks['on_copy_all'] = lambda: self.main_ctrl.log("TODO: on_copy_all")
         self.callbacks['on_copy_poly_json'] = lambda: self.main_ctrl.log("TODO: on_copy_poly_json")
+        
+        # View mode change
+        self.callbacks['on_view_mode_change'] = self.main_ctrl.safe_update_view_mode
+        
+        # HUD Compositor callbacks
+        self.callbacks['on_hud_workspace_changed'] = self.hud_ctrl.on_workspace_changed
+        self.callbacks['on_hud_select'] = self.hud_ctrl.select_hud_rect
+        self.callbacks['on_hud_rename'] = self.hud_ctrl.rename_selected_rect
+        self.callbacks['on_hud_zen_toggle'] = self.hud_ctrl.toggle_zen_mode
+        self.callbacks['on_hud_delete'] = self.hud_ctrl.delete_selected_rect
+        self.callbacks['on_hud_load'] = self.hud_ctrl.load_hud_json
+        self.callbacks['on_hud_save'] = self.hud_ctrl.save_hud_json
+        self.callbacks['on_hud_save_as'] = self.hud_ctrl.save_hud_json_as
         
         # Others can be added here...
         # self.callbacks['on_tab_changed'] = ...

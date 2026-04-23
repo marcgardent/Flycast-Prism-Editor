@@ -12,6 +12,13 @@ class NavSidebarComponent(ctk.CTkFrame):
         self.composite_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.composite_frame.pack(fill="x", padx=10)
         
+        self.composite_buttons = {}
+        from constants import Channels
+        self.composite_buttons["Composite (RGB)"] = self._add_view_button(self.composite_frame, "Composite (RGB)")
+        self.composite_buttons["Normal Map"] = self._add_view_button(self.composite_frame, "Normal Map")
+        self.composite_buttons["HUD (RGBA)"] = self._add_view_button(self.composite_frame, "HUD (RGBA)")
+        self.composite_buttons["Metadata"] = self._add_view_button(self.composite_frame, Channels.COMBINED_METADATA)
+        
         # Tabview
         self.tabview = ctk.CTkTabview(self, width=300, command=self.callbacks.get('on_tab_changed'))
         self.tabview.pack(pady=(10, 20), padx=10, fill="both", expand=True)
@@ -85,3 +92,39 @@ class NavSidebarComponent(ctk.CTkFrame):
         ctk.CTkLabel(self.gbuffer_tab, text="CHANNELS (BLUE = STANDARD)", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(25, 5))
         self.channels_scroll = ctk.CTkScrollableFrame(self.gbuffer_tab, height=350, fg_color="transparent")
         self.channels_scroll.pack(fill="both", expand=True, padx=15, pady=5)
+        self.channel_buttons = []
+
+    def _add_view_button(self, parent, text):
+        btn = ctk.CTkButton(parent, text=text, command=lambda t=text: self.callbacks.get('on_view_mode_change', lambda m: None)(t),
+                            anchor="w", height=38, fg_color="transparent", border_width=1, 
+                            border_color="#3d3d3d", hover_color="#2c3e50", font=ctk.CTkFont(size=12))
+        btn.pack(fill="x", pady=4)
+        return btn
+
+    def update_channel_buttons(self, available_channels, standard_channels):
+        for btn in self.channel_buttons:
+            btn.destroy()
+        self.channel_buttons = []
+
+        for name in sorted(available_channels):
+            is_std = name in standard_channels
+            bg_color = "#2980b9" if is_std else "#34495e"
+            btn = ctk.CTkButton(self.channels_scroll, text=f" {'★' if is_std else ' '} {name}",
+                                command=lambda n=name: self.callbacks.get('on_view_mode_change', lambda m: None)(n),
+                                anchor="w", height=30, fg_color=bg_color)
+            btn.pack(fill="x", pady=2)
+            self.channel_buttons.append(btn)
+
+    def update_hud_list(self, hud_rects, selected_rect_idx):
+        for child in self.hud_list_frame.winfo_children():
+            child.destroy()
+        
+        for i, r in enumerate(hud_rects):
+            is_sel = (i == selected_rect_idx)
+            btn = ctk.CTkButton(self.hud_list_frame, text=r["name"], 
+                                fg_color="#f1c40f" if is_sel else "transparent",
+                                text_color="white" if is_sel else "#aaaaaa",
+                                hover_color="#f39c12" if is_sel else "#333333",
+                                anchor="w", height=28,
+                                command=lambda idx=i: self.callbacks.get('on_hud_select', lambda x: None)(idx))
+            btn.pack(fill="x", pady=1)
