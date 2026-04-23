@@ -7,6 +7,7 @@ channels:
   - nodefaults
 dependencies:
   - python=3.10
+  - tk=*=xft_*  # Force l'installation du build avec support XFT
   - numpy
   - pillow
   - pip

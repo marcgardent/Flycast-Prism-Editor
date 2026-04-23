@@ -93,6 +93,14 @@ class HudCompositor:
         orig_w, orig_h = pil_image.size
         p = HudCompositor.PADDING
         
+        # Scale line thickness based on resolution to keep it consistent
+        base_h = 1080.0
+        scale_factor = max(1.0, orig_h / base_h)
+        line_w = int(round(3 * scale_factor))
+        thin_w = int(round(1 * scale_factor))
+        diamond_size = int(round(12 * scale_factor))
+        handle_size = int(round(6 * scale_factor))
+        
         # 1. Safe Zone Rectangle (SOURCE only)
         if mode == "SOURCE":
             scale = orig_h / HudCompositor.VIRT_H
@@ -100,7 +108,7 @@ class HudCompositor:
             safeX = (orig_w - safeW) / 2.0
             
             rect = [safeX + p, p, safeX + safeW + p, orig_h + p]
-            draw.rectangle(rect, outline="#00ff00", width=3)
+            draw.rectangle(rect, outline="#00ff00", width=line_w)
         
         # 2. Anchors (DESTINATION only)
         anchors = HudCompositor.get_anchor_table(orig_w, orig_h)
@@ -121,7 +129,7 @@ class HudCompositor:
                     color = "#9b59b6" # Purple
                 
                 fill_color = color if is_active_anchor else None
-                HudCompositor.draw_diamond(draw, draw_pos, size=12, color=color, fill=fill_color)
+                HudCompositor.draw_diamond(draw, draw_pos, size=diamond_size, color=color, fill=fill_color)
             
         # 3. User Rectangles
         if user_rects:
@@ -151,7 +159,7 @@ class HudCompositor:
                 else:
                     color = "#f1c40f" if is_selected else "#e67e22" # Yellow if selected, Orange otherwise
                 
-                width = 3 if is_selected else 2
+                width = line_w if is_selected else thin_w * 2
                 
                 # Use sx/sy for SOURCE, dx/dy for DESTINATION
                 if mode == "SOURCE":
@@ -183,7 +191,7 @@ class HudCompositor:
                         rect_center = (rx + rw/2, ry + rh/2)
                         # Slightly different look for non-selected to avoid clutter? 
                         # Let's keep same color but maybe thinner if not selected
-                        l_width = 2 if is_selected else 1
+                        l_width = thin_w * 2 if is_selected else thin_w
                         HudCompositor.draw_dotted_line(draw, rect_center, ap, color=color, width=l_width)
 
                 # Draw handles if selected
@@ -195,6 +203,6 @@ class HudCompositor:
                             (rx, ry + rh), (rx + rw, ry + rh)
                         ]
                         for hx, hy in handles:
-                            draw.rectangle([hx - h_size, hy - h_size, hx + h_size, hy + h_size], fill=color)
+                            draw.rectangle([hx - handle_size, hy - handle_size, hx + handle_size, hy + handle_size], fill=color)
             
         return padded_img

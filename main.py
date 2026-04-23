@@ -1,5 +1,6 @@
 import os
 import customtkinter as ctk
+import ctypes
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageOps, ImageDraw
 import numpy as np
@@ -11,8 +12,23 @@ from exr_loader import EXRLoader
 from image_processor import ImageProcessor
 from hud_compositor import HudCompositor, Anchor
 
+# Global UI Settings for better aesthetics
+ctk.set_appearance_mode("Dark")
+ctk.set_default_color_theme("blue")
+
 class FlycastViewer(ctk.CTk):
     def __init__(self):
+        # Enable High DPI awareness before any widget creation
+        try:
+            # For Windows
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            pass
+
+        # Set scaling based on system (CustomTkinter usually does this, but we can be explicit)
+        # ctk.set_widget_scaling(1.0) 
+        # ctk.set_window_scaling(1.0)
+
         super().__init__()
 
         self.title("Flycast G-Buffer Viewer")
@@ -77,11 +93,11 @@ class FlycastViewer(ctk.CTk):
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_propagate(False)
 
-        self.logo_label = ctk.CTkLabel(self.sidebar, text="FLYCAST G-BUFFER", font=ctk.CTkFont(size=22, weight="bold"))
-        self.logo_label.pack(pady=(25, 20), padx=20)
+        self.logo_label = ctk.CTkLabel(self.sidebar, text="FLYCAST G-BUFFER", font=ctk.CTkFont(family="Inter", size=24, weight="bold"))
+        self.logo_label.pack(pady=(30, 25), padx=20)
 
         self.open_button = ctk.CTkButton(self.sidebar, text="OUVRIR EXR", command=self.open_file,
-                                         fg_color="#2c3e50", hover_color="#34495e", height=40)
+                                         fg_color="#3498db", hover_color="#2980b9", height=45, font=ctk.CTkFont(size=13, weight="bold"))
         self.open_button.pack(pady=10, padx=20, fill="x")
 
         # Section Inspecteur
@@ -135,12 +151,13 @@ class FlycastViewer(ctk.CTk):
 
         # HUD Compositor Tab UI
         self.hud_mode_btn = ctk.CTkSegmentedButton(self.hud_compositor_tab, values=["SOURCE", "DESTINATION"],
-                                                  command=self._on_hud_workspace_changed)
+                                                  command=self._on_hud_workspace_changed,
+                                                  height=35, font=ctk.CTkFont(weight="bold"))
         self.hud_mode_btn.set("SOURCE")
-        self.hud_mode_btn.pack(pady=10, padx=15, fill="x")
+        self.hud_mode_btn.pack(pady=15, padx=15, fill="x")
 
-        self.hud_list_frame = ctk.CTkScrollableFrame(self.hud_compositor_tab, height=200, fg_color="transparent")
-        self.hud_list_frame.pack(fill="x", padx=5, pady=5)
+        self.hud_list_frame = ctk.CTkScrollableFrame(self.hud_compositor_tab, height=220, fg_color="#1e1e1e", corner_radius=8)
+        self.hud_list_frame.pack(fill="x", padx=10, pady=5)
         
         self.hud_name_var = ctk.StringVar()
         self.hud_name_entry = ctk.CTkEntry(self.hud_compositor_tab, textvariable=self.hud_name_var, placeholder_text="Nom du rectangle...")
@@ -192,10 +209,10 @@ class FlycastViewer(ctk.CTk):
         self.channel_buttons = []
 
         # Console
-        self.info_box = ctk.CTkTextbox(self.sidebar, height=120, font=ctk.CTkFont(size=11), fg_color="#1a1a1a",
-                                       text_color="#aaaaaa")
+        self.info_box = ctk.CTkTextbox(self.sidebar, height=140, font=ctk.CTkFont(family="Consolas", size=11), fg_color="#0f0f0f",
+                                       text_color="#00ff00", border_width=1, border_color="#333333")
         self.info_box.pack(side="bottom", fill="x", padx=20, pady=20)
-        self.info_box.insert("0.0", "En attente de chargement...")
+        self.info_box.insert("0.0", "SYSTEM READY\n")
 
     def _setup_image_area(self):
         self.image_container = ctk.CTkFrame(self, fg_color="#050505", corner_radius=0)
@@ -210,10 +227,10 @@ class FlycastViewer(ctk.CTk):
             self.display_label.image = self.logo_image # Keep a reference
 
         # Overlay de chargement
-        self.loading_overlay = ctk.CTkFrame(self.image_container, fg_color="#1a1a1a", corner_radius=10, border_width=2,
+        self.loading_overlay = ctk.CTkFrame(self.image_container, fg_color="#1a1a1a", corner_radius=15, border_width=2,
                                             border_color="#3498db")
         self.loading_label = ctk.CTkLabel(self.loading_overlay, text="TRAITEMENT EN COURS...",
-                                          font=ctk.CTkFont(size=14, weight="bold"))
+                                          font=ctk.CTkFont(family="Inter", size=16, weight="bold"))
         self.loading_label.pack(pady=(20, 10), padx=30)
         self.progress_bar = ctk.CTkProgressBar(self.loading_overlay, orientation="horizontal", width=250)
         self.progress_bar.pack(pady=(0, 15), padx=30)
@@ -238,8 +255,9 @@ class FlycastViewer(ctk.CTk):
 
     def _add_view_button(self, parent, text):
         btn = ctk.CTkButton(parent, text=text, command=lambda t=text: self.safe_update_view_mode(t),
-                            anchor="w", height=35, fg_color="transparent", border_width=1, border_color="#444444")
-        btn.pack(fill="x", pady=3)
+                            anchor="w", height=38, fg_color="transparent", border_width=1, 
+                            border_color="#3d3d3d", hover_color="#2c3e50", font=ctk.CTkFont(size=12))
+        btn.pack(fill="x", pady=4)
         return btn
 
     def log(self, text, clear=False):
@@ -427,8 +445,22 @@ class FlycastViewer(ctk.CTk):
         self.display_size = (int(img_w * ratio), int(img_h * ratio))
 
         if self.display_size[0] > 0 and self.display_size[1] > 0:
-            resized_pil = display_pil.resize(self.display_size, Image.Resampling.LANCZOS)
-            ctk_img = ctk.CTkImage(light_image=resized_pil, dark_image=resized_pil, size=self.display_size)
+            # For high-quality display and High DPI support:
+            # We don't pre-resize the image to the display size anymore.
+            # Instead, we pass the high-res image to CTkImage and let it handle the scaling.
+            # This ensures that on High DPI screens, we use the extra resolution available.
+            
+            # However, to avoid memory issues with huge images, we can resize to 2x display size if needed
+            # as a compromise between quality and performance.
+            scaling = self._get_window_scaling()
+            target_w = int(self.display_size[0] * scaling)
+            target_h = int(self.display_size[1] * scaling)
+            
+            # Only resize if the source is significantly larger than what we need
+            if display_pil.width > target_w * 1.2 or display_pil.height > target_h * 1.2:
+                display_pil = display_pil.resize((target_w, target_h), Image.Resampling.LANCZOS)
+            
+            ctk_img = ctk.CTkImage(light_image=display_pil, dark_image=display_pil, size=self.display_size)
             self.display_label.configure(image=ctk_img)
             self.display_label.image = ctk_img # Keep a reference
         else:
