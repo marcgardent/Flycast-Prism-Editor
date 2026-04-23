@@ -45,9 +45,9 @@
     "actions": ["avoidNormal", "avoidDepth"]
   }
 ],
-    "safe_zone": {
-    "w": 640,
-    "h": 480
+  "safe_zone": {
+  "w": 640,
+  "h": 480
   },
   "hud_zones": [
     {

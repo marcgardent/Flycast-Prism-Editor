@@ -887,45 +887,65 @@ class FlycastViewer(ctk.CTk):
                 data = json.load(f)
             
             if "hud_zones" not in data:
-                self.log("Invalid JSON format (hud_zones missing).")
-                return
+                raise KeyError("hud_zones")
 
             orig_w, orig_h = self.image_size
             v_scale = 480.0 / orig_h
-            VW = orig_w * v_scale
             
             v_anchors = HudCompositor.get_anchor_table(orig_w, orig_h)
             v_anchors = {k: (v[0] * v_scale, v[1] * v_scale) for k, v in v_anchors.items()}
             source_anchor_vpos = v_anchors[Anchor.SCREEN_CENTER]
 
             new_hud_rects = []
-            for zone in data["hud_zones"]:
-                v_w = zone["w"]
-                v_h = zone["h"]
-                
-                # Convert source back
-                vsx = zone["source"]["x"] + source_anchor_vpos[0]
-                vsy = zone["source"]["y"] + source_anchor_vpos[1]
-                
-                # Convert destination back
-                anchor_name = zone["mapping"]["anchor"]
-                anchor_enum = Anchor[anchor_name]
-                dest_anchor_vpos = v_anchors[anchor_enum]
-                vdx = zone["mapping"]["x"] + dest_anchor_vpos[0]
-                vdy = zone["mapping"]["y"] + dest_anchor_vpos[1]
-                
-                new_rect = {
-                    "name": zone["name"],
-                    "sx": vsx / v_scale,
-                    "sy": vsy / v_scale,
-                    "dx": vdx / v_scale,
-                    "dy": vdy / v_scale,
-                    "w": v_w / v_scale,
-                    "h": v_h / v_scale,
-                    "anchor": anchor_enum,
-                    "zen": zone.get("zen_mode", False)
-                }
-                new_hud_rects.append(new_rect)
+            for i, zone in enumerate(data["hud_zones"]):
+                try:
+                    # Required fields check
+                    for field in ["name", "w", "h", "source", "mapping"]:
+                        if field not in zone:
+                            raise KeyError(f"'{field}' is missing")
+                    
+                    for field in ["x", "y"]:
+                        if field not in zone["source"]:
+                            raise KeyError(f"source.'{field}' is missing")
+                        if field not in zone["mapping"]:
+                            raise KeyError(f"mapping.'{field}' is missing")
+                    
+                    if "anchor" not in zone["mapping"]:
+                        raise KeyError("mapping.'anchor' is missing")
+
+                    v_w = zone["w"]
+                    v_h = zone["h"]
+                    
+                    # Convert source back
+                    vsx = zone["source"]["x"] + source_anchor_vpos[0]
+                    vsy = zone["source"]["y"] + source_anchor_vpos[1]
+                    
+                    # Convert destination back
+                    anchor_name = zone["mapping"]["anchor"]
+                    try:
+                        anchor_enum = Anchor[anchor_name]
+                    except KeyError:
+                        raise ValueError(f"Invalid anchor name: '{anchor_name}'")
+                        
+                    dest_anchor_vpos = v_anchors[anchor_enum]
+                    vdx = zone["mapping"]["x"] + dest_anchor_vpos[0]
+                    vdy = zone["mapping"]["y"] + dest_anchor_vpos[1]
+                    
+                    new_rect = {
+                        "name": zone["name"],
+                        "sx": vsx / v_scale,
+                        "sy": vsy / v_scale,
+                        "dx": vdx / v_scale,
+                        "dy": vdy / v_scale,
+                        "w": v_w / v_scale,
+                        "h": v_h / v_scale,
+                        "anchor": anchor_enum,
+                        "zen": zone.get("zen_mode", False)
+                    }
+                    new_hud_rects.append(new_rect)
+                except (KeyError, ValueError) as e:
+                    zone_name = zone.get("name", "Unnamed")
+                    raise RuntimeError(f"Zone #{i} ('{zone_name}'): {e}")
             
             self.hud_rects = new_hud_rects
             self.current_hud_path = file_path
@@ -935,9 +955,18 @@ class FlycastViewer(ctk.CTk):
             self.refresh_image_display()
             self.log(f"HUD Loaded: {os.path.basename(file_path)} ({len(new_hud_rects)} zones)")
             
+        except json.JSONDecodeError as e:
+            msg = f"JSON Syntax Error: {e.msg} at line {e.lineno}, col {e.colno}"
+            self.log(msg)
+            messagebox.showerror("Load Error", msg)
+        except KeyError as e:
+            msg = f"Missing mandatory key: {e}"
+            self.log(msg)
+            messagebox.showerror("Load Error", msg)
         except Exception as e:
-            self.log(f"Error during loading: {e}")
-            print(f"Load Error: {e}")
+            msg = f"Failed to parse HUD JSON: {e}"
+            self.log(msg)
+            messagebox.showerror("Load Error", msg)
 
     def select_hud_rect(self, idx):
         self.selected_rect_idx = idx
