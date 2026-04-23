@@ -168,6 +168,14 @@ class HUDController:
         st.drag_mode = None
         self.mc.ui.nav_sidebar.update_hud_list(st.hud_rects, st.selected_rect_idx)
 
+    def toggle_workspace(self):
+        active_tab = self.mc.ui.nav_sidebar.tabview.get()
+        if active_tab == "HUD Compositor":
+            st = self.mc.state
+            new_mode = "DESTINATION" if st.hud_workspace == "SOURCE" else "SOURCE"
+            self.mc.ui.nav_sidebar.hud_mode_btn.set(new_mode)
+            self.on_workspace_changed(new_mode)
+
     def on_workspace_changed(self, mode):
         self.mc.state.hud_workspace = mode
         self.mc.ui.nav_sidebar.hud_name_entry.configure(state="normal")

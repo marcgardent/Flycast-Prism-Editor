@@ -64,7 +64,7 @@ class MainWindow(ctk.CTk):
         if event and event.widget != self:
             return
 
-        cont_w, cont_h = self.center_container.winfo_width(), self.center_container.winfo_height()
+        cont_w, cont_h = self.image_area.winfo_width(), self.image_area.winfo_height()
         if hasattr(self, "_last_size") and self._last_size == (cont_w, cont_h):
             return
         self._last_size = (cont_w, cont_h)

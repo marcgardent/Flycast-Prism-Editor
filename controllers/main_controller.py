@@ -135,11 +135,22 @@ class MainController:
         if self.state.last_numpy_image is None:
             return
 
-        cont_w, cont_h = self.ui.center_container.winfo_width(), self.ui.center_container.winfo_height()
+        cont_w, cont_h = self.ui.image_area.winfo_width(), self.ui.image_area.winfo_height()
         if cont_w < 50 or cont_h < 50: return
 
         self.state.full_pil_image = Image.fromarray(self.state.last_numpy_image)
         display_pil = self.state.full_pil_image
+        
+        # Apply overlays based on active tab
+        active_tab = self.ui.nav_sidebar.tabview.get()
+        if active_tab == "HUD Compositor":
+            from hud_compositor import HudCompositor
+            display_pil = HudCompositor.draw_overlay(
+                self.state.full_pil_image, 
+                self.state.hud_rects, 
+                self.state.selected_rect_idx, 
+                self.state.hud_workspace
+            )
         
         # HUD overlays will be delegated to HUD controller in the future, 
         # but for now we'll do the PIL scaling here

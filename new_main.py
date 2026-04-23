@@ -56,8 +56,9 @@ class FlycastApp:
         self.callbacks['on_hud_save'] = self.hud_ctrl.save_hud_json
         self.callbacks['on_hud_save_as'] = self.hud_ctrl.save_hud_json_as
         
-        # Others can be added here...
-        # self.callbacks['on_tab_changed'] = ...
+        # UI Tab change
+        self.callbacks['on_tab_changed'] = lambda: self.main_ctrl.refresh_image_display()
+        self.callbacks['on_space'] = self.hud_ctrl.toggle_workspace
         
         # Global CTK Theme
         ctk.set_appearance_mode("Dark")
