@@ -20,7 +20,7 @@ class NavSidebarComponent(ctk.CTkFrame):
         self.composite_buttons["Metadata"] = self._add_view_button(self.composite_frame, Channels.COMBINED_METADATA)
         
         # Tabview
-        self.tabview = ctk.CTkTabview(self, width=300, command=self.callbacks.get('on_tab_changed'))
+        self.tabview = ctk.CTkTabview(self, width=300, command=lambda: self.callbacks.get('on_tab_changed', lambda: None)())
         self.tabview.pack(pady=(10, 20), padx=10, fill="both", expand=True)
 
         self.gbuffer_tab = self.tabview.add("G-Buffer Viewer")
