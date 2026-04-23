@@ -168,7 +168,7 @@ class InteractionController:
     def _eval_thread(self, expr_string):
         st = self.mc.state
         exr_data = st.current_exr_data
-        h, w = st.image_size
+        w, h = st.image_size
         
         # Extract channels into 1D flattened arrays to speed up access
         channels_map = {
