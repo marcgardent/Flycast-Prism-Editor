@@ -29,7 +29,7 @@ class SidebarComponent(ctk.CTkFrame):
         self.logo_label = ctk.CTkLabel(self, text="Flycast Prism Editor", font=ctk.CTkFont(family="Inter", size=18, weight="bold"))
         self.logo_label.pack(pady=(5, 20), padx=20)
 
-        self.open_button = ctk.CTkButton(self, text="OPEN EXR", command=self.callbacks.get('on_open_click'),
+        self.open_button = ctk.CTkButton(self, text="OPEN EXR", command=lambda: self.callbacks.get('on_open_click', lambda: None)(),
                                          height=45, font=ctk.CTkFont(size=13, weight="bold"))
         self.open_button.pack(pady=10, padx=20, fill="x")
 
@@ -77,3 +77,83 @@ class SidebarComponent(ctk.CTkFrame):
         self.pixel_placeholder.pack(pady=10)
 
         ctk.CTkLabel(self.inspector_container, text="INSPECTOR (IMAGE CLICK)", font=ctk.CTkFont(size=13, weight="bold")).pack(side="bottom", pady=(10, 5))
+
+    def update_info_table(self, data):
+        if not hasattr(self, "_info_labels"):
+            self._info_labels = {}
+            self._info_empty_label = None
+
+        if not data:
+            for lbls in self._info_labels.values():
+                lbls[0].grid_remove()
+                lbls[1].grid_remove()
+            
+            if not self._info_empty_label:
+                self._info_empty_label = ctk.CTkLabel(self.info_grid_frame, text="HOVER OVER IMAGE", font=ctk.CTkFont(family="Consolas", size=11), text_color="#777777")
+                self._info_empty_label.grid(row=0, column=0, columnspan=2, sticky="ew")
+            else:
+                self._info_empty_label.grid()
+            return
+
+        if self._info_empty_label:
+            self._info_empty_label.grid_remove()
+
+        for i, (key, val) in enumerate(data.items()):
+            if key not in self._info_labels:
+                k_lbl = ctk.CTkLabel(self.info_grid_frame, text=f"{key}:", font=ctk.CTkFont(family="Consolas", size=10, weight="bold"), 
+                                     text_color="#aaaaaa", anchor="w")
+                v_lbl = ctk.CTkLabel(self.info_grid_frame, text=val, font=ctk.CTkFont(family="Consolas", size=10), 
+                                     text_color="#3498db", anchor="w")
+                self._info_labels[key] = (k_lbl, v_lbl)
+            
+            k_lbl, v_lbl = self._info_labels[key]
+            v_lbl.configure(text=val)
+            k_lbl.grid(row=i, column=0, sticky="w", padx=(0, 10))
+            v_lbl.grid(row=i, column=1, sticky="w")
+            
+        # Remove any labels that are no longer in data
+        for key in list(self._info_labels.keys()):
+            if key not in data:
+                k_lbl, v_lbl = self._info_labels.pop(key)
+                k_lbl.destroy()
+                v_lbl.destroy()
+
+    def update_inspect_table(self, data):
+        for child in self.pixel_inspect_frame.winfo_children():
+            child.destroy()
+        for child in self.poly_inspect_frame.winfo_children():
+            child.destroy()
+        
+        if not data:
+            self.pixel_placeholder = ctk.CTkLabel(self.pixel_inspect_frame, text="CLICK ON IMAGE TO INSPECT", font=ctk.CTkFont(family="Consolas", size=11), text_color="#777777")
+            self.pixel_placeholder.pack(pady=10)
+            self.poly_placeholder = ctk.CTkLabel(self.poly_inspect_frame, text="CLICK ON IMAGE TO INSPECT", font=ctk.CTkFont(family="Consolas", size=11), text_color="#777777")
+            self.poly_placeholder.pack(pady=10)
+            self.copy_all_btn.configure(state="disabled")
+            return
+
+        self.copy_all_btn.configure(state="normal")
+        ctk.CTkLabel(self.pixel_inspect_frame, text="PIXEL LEVEL", font=ctk.CTkFont(size=10, weight="bold"), text_color="#777777").pack(pady=(5, 0))
+        pixel_grid = ctk.CTkFrame(self.pixel_inspect_frame, fg_color="transparent")
+        pixel_grid.pack(pady=5, padx=10, fill="x")
+        
+        ctk.CTkLabel(self.poly_inspect_frame, text="POLY LEVEL", font=ctk.CTkFont(size=10, weight="bold"), text_color="#777777").pack(pady=(5, 0))
+        poly_grid = ctk.CTkFrame(self.poly_inspect_frame, fg_color="transparent")
+        poly_grid.pack(pady=5, padx=10, fill="x")
+
+        pixel_keys = ["RGB", "Normals", "Depth", "HUD"]
+        poly_keys = ["MatID", "MatList", "MatFlags", "WorldPos", "TexHash", "PolyCnt"]
+
+        p_row, py_row = 0, 0
+        for key, val in data.items():
+            if key in pixel_keys:
+                grid, row = pixel_grid, p_row
+                p_row += 1
+            else:
+                grid, row = poly_grid, py_row
+                py_row += 1
+                
+            k_lbl = ctk.CTkLabel(grid, text=f"{key}:", font=ctk.CTkFont(family="Consolas", size=10, weight="bold"), text_color="#aaaaaa", anchor="w")
+            k_lbl.grid(row=row, column=0, sticky="w", padx=(0, 10))
+            v_lbl = ctk.CTkLabel(grid, text=val, font=ctk.CTkFont(family="Consolas", size=10), text_color="#2ecc71", anchor="w")
+            v_lbl.grid(row=row, column=1, sticky="w")

@@ -10,17 +10,12 @@ class ImageAreaComponent(ctk.CTkFrame):
         self.display_label = ctk.CTkLabel(self, text="", cursor="crosshair")
         self.display_label.place(relx=0.5, rely=0.5, anchor="center")
 
-        # Bind events
-        if 'on_mouse_move' in self.callbacks:
-            self.display_label.bind("<Motion>", self.callbacks['on_mouse_move'])
-        if 'on_mouse_down' in self.callbacks:
-            self.display_label.bind("<Button-1>", self.callbacks['on_mouse_down'])
-        if 'on_mouse_drag' in self.callbacks:
-            self.display_label.bind("<B1-Motion>", self.callbacks['on_mouse_drag'])
-        if 'on_mouse_up' in self.callbacks:
-            self.display_label.bind("<ButtonRelease-1>", self.callbacks['on_mouse_up'])
-        if 'on_mouse_leave' in self.callbacks:
-            self.display_label.bind("<Leave>", self.callbacks['on_mouse_leave'])
+        # Bind events using late binding (lambdas)
+        self.display_label.bind("<Motion>", lambda e: self.callbacks.get('on_mouse_move', lambda ev: None)(e))
+        self.display_label.bind("<Button-1>", lambda e: self.callbacks.get('on_mouse_down', lambda ev: None)(e))
+        self.display_label.bind("<B1-Motion>", lambda e: self.callbacks.get('on_mouse_drag', lambda ev: None)(e))
+        self.display_label.bind("<ButtonRelease-1>", lambda e: self.callbacks.get('on_mouse_up', lambda ev: None)(e))
+        self.display_label.bind("<Leave>", lambda e: self.callbacks.get('on_mouse_leave', lambda ev: None)(e))
 
         # Loading Overlay
         self.loading_overlay = ctk.CTkFrame(self, fg_color="#1a1a1a", corner_radius=15, border_width=2)
@@ -41,7 +36,7 @@ class ImageAreaComponent(ctk.CTkFrame):
         self.splash_logo = ctk.CTkLabel(self.splash_frame, text="")
         self.splash_logo.pack(pady=20)
         
-        self.splash_btn = ctk.CTkButton(self.splash_frame, text="OPEN EXR FILE", command=self.callbacks.get('on_open_click'),
+        self.splash_btn = ctk.CTkButton(self.splash_frame, text="OPEN EXR FILE", command=lambda: self.callbacks.get('on_open_click', lambda: None)(),
                                         width=300, height=60, font=ctk.CTkFont(size=16, weight="bold"))
         self.splash_btn.pack(pady=20)
 

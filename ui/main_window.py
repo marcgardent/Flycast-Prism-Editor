@@ -56,8 +56,40 @@ class MainWindow(ctk.CTk):
         # Initially hide sidebars for splash screen
         self.set_ui_visibility(False)
         
-        self.bind("<Configure>", self.callbacks.get('on_resize'))
-        self.bind("<space>", self.callbacks.get('on_space'))
+        self.bind("<Configure>", self.on_resize)
+        self.bind("<space>", lambda e: self.callbacks.get('on_space', lambda: None)())
+
+    def on_resize(self, event=None):
+        # Only process resize events for the root window to avoid RecursionError
+        if event and event.widget != self:
+            return
+
+        cont_w, cont_h = self.center_container.winfo_width(), self.center_container.winfo_height()
+        if hasattr(self, "_last_size") and self._last_size == (cont_w, cont_h):
+            return
+        self._last_size = (cont_w, cont_h)
+        
+        if hasattr(self, "_resize_after_id") and self._resize_after_id:
+            self.after_cancel(self._resize_after_id)
+        
+        self._resize_after_id = self.after(100, self._perform_resize_refresh)
+
+    def _perform_resize_refresh(self):
+        self._resize_after_id = None
+        self.update_idletasks()
+        
+        if self.sidebar.winfo_viewable():
+            self.sidebar.grid_remove()
+            self.nav_sidebar.grid_remove()
+            self.update_idletasks()
+            self.sidebar.grid(row=0, column=0, sticky="nsew")
+            self.nav_sidebar.grid(row=0, column=2, sticky="nsew")
+            self.nav_sidebar.update()
+            self.sidebar.update()
+            
+        # Trigger the actual resize callback
+        cb = self.callbacks.get('on_resize')
+        if cb: cb()
 
     def set_ui_visibility(self, visible):
         if visible:
