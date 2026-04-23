@@ -88,13 +88,20 @@ class FlycastViewer(ctk.CTk):
             w = int(pil_logo.width * (h / pil_logo.height))
             self.logo_image = ctk.CTkImage(light_image=pil_logo, dark_image=pil_logo, size=(w, h))
             
-            # Set window icon (Linux compatible)
-            if os.path.exists(self.logo_path):
-                try:
-                    self.icon_image = tk.PhotoImage(file=self.logo_path)
-                    self.wm_iconphoto(True, self.icon_image)
-                except Exception as e:
-                    print(f"Failed to set window icon: {e}")
+            # Set window icon
+            if sys.platform.startswith("win"):
+                if os.path.exists(self.icon_path):
+                    try:
+                        self.iconbitmap(self.icon_path)
+                    except Exception as e:
+                        print(f"Failed to set Windows iconbitmap: {e}")
+            else:
+                if os.path.exists(self.logo_path):
+                    try:
+                        self.icon_image = tk.PhotoImage(file=self.logo_path)
+                        self.wm_iconphoto(True, self.icon_image)
+                    except Exception as e:
+                        print(f"Failed to set Linux/macOS window icon: {e}")
         except FileNotFoundError:
             print(f"Logo file not found at {self.logo_path}. Continuing without logo.")
         except Exception as e:

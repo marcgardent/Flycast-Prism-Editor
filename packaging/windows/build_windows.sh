@@ -23,6 +23,7 @@ wine python -m PyInstaller \
     --windowed \
     --name "${APP_NAME}${VERSION_STR}" \
     --add-data "assets;assets" \
+    --icon "assets/logo-prism.ico" \
     --clean \
     main.py
 
