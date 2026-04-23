@@ -184,21 +184,6 @@ class FlycastViewer(ctk.CTk):
                                          height=45, font=ctk.CTkFont(size=13, weight="bold"))
         self.open_button.pack(pady=10, padx=20, fill="x")
 
-        # Inspector Section
-        ctk.CTkLabel(self.sidebar, text="INSPECTOR (IMAGE CLICK)", font=ctk.CTkFont(size=13, weight="bold")).pack(
-            pady=(25, 5))
-        self.inspect_table_frame = ctk.CTkFrame(self.sidebar, fg_color="#1a1a1a", corner_radius=8, border_width=1, border_color="#333333")
-        self.inspect_table_frame.pack(pady=5, padx=20, fill="x")
-        
-        self.inspect_placeholder = ctk.CTkLabel(self.inspect_table_frame, text="CLICK ON IMAGE TO INSPECT", font=ctk.CTkFont(family="Consolas", size=11),
-                                             text_color="#777777")
-        self.inspect_placeholder.pack(pady=20)
-
-        self.copy_all_btn = ctk.CTkButton(self.sidebar, text="COPY ALL VALUES", command=self.copy_all_inspected, 
-                                          height=28, fg_color="#34495e", hover_color="#2c3e50")
-        self.copy_all_btn.pack(pady=(5, 0), padx=20, fill="x")
-        self.copy_all_btn.configure(state="disabled")
-
         # Magnifier Panel (Fixed in sidebar)
         self.magnifier_frame = ctk.CTkFrame(self.sidebar, fg_color="#1a1a1a", corner_radius=8, border_width=1, border_color="#333333", height=360)
         self.magnifier_frame.pack(pady=10, padx=20, fill="x")
@@ -285,6 +270,27 @@ class FlycastViewer(ctk.CTk):
         self.channels_scroll = ctk.CTkScrollableFrame(self.gbuffer_tab, height=350, fg_color="transparent")
         self.channels_scroll.pack(fill="both", expand=True, padx=15, pady=5)
         self.channel_buttons = []
+
+        # Inspector Section (Moved to bottom)
+        self.inspector_container = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        self.inspector_container.pack(side="bottom", fill="x", padx=20, pady=(0, 10))
+
+        self.copy_all_btn = ctk.CTkButton(self.inspector_container, text="COPY ALL VALUES", command=self.copy_all_inspected, 
+                                          height=28, fg_color="#34495e", hover_color="#2c3e50")
+        self.copy_all_btn.pack(side="bottom", fill="x", pady=(5, 0))
+        self.copy_all_btn.configure(state="disabled")
+
+        self.poly_inspect_frame = ctk.CTkFrame(self.inspector_container, fg_color="#1a1a1a", corner_radius=8, border_width=1, border_color="#333333")
+        self.poly_inspect_frame.pack(side="bottom", fill="x", pady=5)
+        self.poly_placeholder = ctk.CTkLabel(self.poly_inspect_frame, text="CLICK ON IMAGE TO INSPECT", font=ctk.CTkFont(family="Consolas", size=11), text_color="#777777")
+        self.poly_placeholder.pack(pady=10)
+        
+        self.pixel_inspect_frame = ctk.CTkFrame(self.inspector_container, fg_color="#1a1a1a", corner_radius=8, border_width=1, border_color="#333333")
+        self.pixel_inspect_frame.pack(side="bottom", fill="x", pady=5)
+        self.pixel_placeholder = ctk.CTkLabel(self.pixel_inspect_frame, text="CLICK ON IMAGE TO INSPECT", font=ctk.CTkFont(family="Consolas", size=11), text_color="#777777")
+        self.pixel_placeholder.pack(pady=10)
+
+        ctk.CTkLabel(self.inspector_container, text="INSPECTOR (IMAGE CLICK)", font=ctk.CTkFont(size=13, weight="bold")).pack(side="bottom", pady=(10, 5))
 
         # Console
         self.info_box = ctk.CTkTextbox(self.sidebar, height=140, font=ctk.CTkFont(family="Consolas", size=11), fg_color="#0f0f0f",
@@ -1061,28 +1067,53 @@ class FlycastViewer(ctk.CTk):
             self.hide_magnifier()
 
     def _update_inspect_table(self, data):
-        """Updates the inspector grid with clicked pixel data."""
-        for child in self.inspect_table_frame.winfo_children():
+        """Updates the inspector grids with clicked pixel data."""
+        for child in self.pixel_inspect_frame.winfo_children():
+            child.destroy()
+        for child in self.poly_inspect_frame.winfo_children():
             child.destroy()
         
         if not data:
-            self.inspect_placeholder = ctk.CTkLabel(self.inspect_table_frame, text="CLICK ON IMAGE TO INSPECT", 
-                                                    font=ctk.CTkFont(family="Consolas", size=11), text_color="#777777")
-            self.inspect_placeholder.pack(pady=20)
+            self.pixel_placeholder = ctk.CTkLabel(self.pixel_inspect_frame, text="CLICK ON IMAGE TO INSPECT", font=ctk.CTkFont(family="Consolas", size=11), text_color="#777777")
+            self.pixel_placeholder.pack(pady=10)
+            self.poly_placeholder = ctk.CTkLabel(self.poly_inspect_frame, text="CLICK ON IMAGE TO INSPECT", font=ctk.CTkFont(family="Consolas", size=11), text_color="#777777")
+            self.poly_placeholder.pack(pady=10)
             return
 
-        # Use a sub-frame for the grid to allow padding/centering
-        grid_container = ctk.CTkFrame(self.inspect_table_frame, fg_color="transparent")
-        grid_container.pack(pady=10, padx=10, fill="x")
+        # Render Pixel Level
+        ctk.CTkLabel(self.pixel_inspect_frame, text="PIXEL LEVEL", font=ctk.CTkFont(size=10, weight="bold"), text_color="#777777").pack(pady=(5, 0))
+        pixel_grid = ctk.CTkFrame(self.pixel_inspect_frame, fg_color="transparent")
+        pixel_grid.pack(pady=5, padx=10, fill="x")
+        
+        # Render Poly Level
+        ctk.CTkLabel(self.poly_inspect_frame, text="POLY LEVEL", font=ctk.CTkFont(size=10, weight="bold"), text_color="#777777").pack(pady=(5, 0))
+        poly_grid = ctk.CTkFrame(self.poly_inspect_frame, fg_color="transparent")
+        poly_grid.pack(pady=5, padx=10, fill="x")
 
-        for i, (key, val) in enumerate(data.items()):
-            k_lbl = ctk.CTkLabel(grid_container, text=f"{key}:", font=ctk.CTkFont(family="Consolas", size=10, weight="bold"), 
-                                 text_color="#aaaaaa", anchor="w")
-            k_lbl.grid(row=i, column=0, sticky="w", padx=(0, 10))
-            
-            v_lbl = ctk.CTkLabel(grid_container, text=val, font=ctk.CTkFont(family="Consolas", size=10), 
-                                 text_color="#2ecc71", anchor="w") # Green color for inspected values
-            v_lbl.grid(row=i, column=1, sticky="w")
+        pixel_keys = ["RGB", "Normals", "Depth", "HUD"]
+        poly_keys = ["MatID", "MatList", "MatFlags", "WorldPos", "TexHash", "PolyCnt"]
+
+        p_row, py_row = 0, 0
+        for key, val in data.items():
+            if key in pixel_keys:
+                k_lbl = ctk.CTkLabel(pixel_grid, text=f"{key}:", font=ctk.CTkFont(family="Consolas", size=10, weight="bold"), text_color="#aaaaaa", anchor="w")
+                k_lbl.grid(row=p_row, column=0, sticky="w", padx=(0, 10))
+                v_lbl = ctk.CTkLabel(pixel_grid, text=val, font=ctk.CTkFont(family="Consolas", size=10), text_color="#2ecc71", anchor="w")
+                v_lbl.grid(row=p_row, column=1, sticky="w")
+                p_row += 1
+            elif key in poly_keys:
+                k_lbl = ctk.CTkLabel(poly_grid, text=f"{key}:", font=ctk.CTkFont(family="Consolas", size=10, weight="bold"), text_color="#aaaaaa", anchor="w")
+                k_lbl.grid(row=py_row, column=0, sticky="w", padx=(0, 10))
+                v_lbl = ctk.CTkLabel(poly_grid, text=val, font=ctk.CTkFont(family="Consolas", size=10), text_color="#2ecc71", anchor="w")
+                v_lbl.grid(row=py_row, column=1, sticky="w")
+                py_row += 1
+            else:
+                # Fallback for unexpected keys
+                k_lbl = ctk.CTkLabel(poly_grid, text=f"{key}:", font=ctk.CTkFont(family="Consolas", size=10, weight="bold"), text_color="#aaaaaa", anchor="w")
+                k_lbl.grid(row=py_row, column=0, sticky="w", padx=(0, 10))
+                v_lbl = ctk.CTkLabel(poly_grid, text=val, font=ctk.CTkFont(family="Consolas", size=10), text_color="#2ecc71", anchor="w")
+                v_lbl.grid(row=py_row, column=1, sticky="w")
+                py_row += 1
 
     def copy_all_inspected(self):
         """Copies current inspected data to clipboard."""
