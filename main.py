@@ -161,8 +161,9 @@ class FlycastViewer(ctk.CTk):
         self.inspect_entry.pack(pady=5, padx=20, fill="x")
 
         # Magnifier Panel (Fixed in sidebar)
-        self.magnifier_frame = ctk.CTkFrame(self.sidebar, fg_color="#1a1a1a", corner_radius=8, border_width=1, border_color="#333333")
+        self.magnifier_frame = ctk.CTkFrame(self.sidebar, fg_color="#1a1a1a", corner_radius=8, border_width=1, border_color="#333333", height=320)
         self.magnifier_frame.pack(pady=10, padx=20, fill="x")
+        self.magnifier_frame.pack_propagate(False) # Ensure the frame doesn't shrink when empty
         
         ctk.CTkLabel(self.magnifier_frame, text="PIXEL-PERFECT MAGNIFIER (1:1)", font=ctk.CTkFont(size=10, weight="bold"), text_color="#777777").pack(pady=(5, 0))
         
@@ -344,9 +345,10 @@ class FlycastViewer(ctk.CTk):
             self.splash_frame.place(relx=0.5, rely=0.5, anchor="center")
 
     def hide_magnifier(self, event=None):
-        self.display_label.configure(cursor="")
+        if self.display_label.cget("cursor") != "":
+            self.display_label.configure(cursor="")
         # Clear the fixed magnifier labels instead of hiding them
-        self.magnifier_label.configure(image="")
+        self.magnifier_label.configure(image=None)
         self.value_info_label.configure(text="HOVER OVER IMAGE", text_color="#777777")
 
     def open_file(self):
@@ -478,6 +480,12 @@ class FlycastViewer(ctk.CTk):
 
 
     def on_resize(self, event=None):
+        # Prevent jitter by checking if the actual dimensions changed
+        cont_w, cont_h = self.image_container.winfo_width(), self.image_container.winfo_height()
+        if hasattr(self, "_last_size") and self._last_size == (cont_w, cont_h):
+            return
+        self._last_size = (cont_w, cont_h)
+
         if self.last_numpy_image is not None and not self.is_loading:
             self.refresh_image_display()
         elif self.last_numpy_image is None and self.logo_image: # Resize logo if no image is loaded
@@ -1018,9 +1026,11 @@ class FlycastViewer(ctk.CTk):
                     break
             
             if hover_rect:
-                self.display_label.configure(cursor="hand2")
+                if self.display_label.cget("cursor") != "hand2":
+                    self.display_label.configure(cursor="hand2")
             else:
-                self.display_label.configure(cursor="")
+                if self.display_label.cget("cursor") != "":
+                    self.display_label.configure(cursor="")
 
         if self.full_pil_image is None or self.is_loading:
             self.hide_magnifier()
