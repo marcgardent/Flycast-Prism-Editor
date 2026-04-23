@@ -111,76 +111,57 @@ class ImageProcessor:
         return np.clip(img_np * 255, 0, 255).astype(np.uint8)
 
     @staticmethod
-    def get_pixel_raw_values(mode, px, py, exr_data):
+    def get_pixel_raw_values(px, py, exr_data):
         if not exr_data: return "N/A"
         try:
-            if mode == "Composite (RGB)":
-                res = []
-                for c in [Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B]:
-                    if c in exr_data: res.append(f"{exr_data[c][py, px]:.3f}")
-                return f"RGB({', '.join(res)})"
-            elif mode == "Normal Map":
-                res = []
-                for c in [Channels.NORMAL_X, Channels.NORMAL_Y, Channels.NORMAL_Z]:
-                    if c in exr_data: res.append(f"{exr_data[c][py, px]:.3f}")
-                return f"RawNorm({', '.join(res)})"
-            elif mode == "HUD (RGBA)": # New mode
-                res = []
-                for c in [Channels.HUD_R, Channels.HUD_G, Channels.HUD_B, Channels.HUD_A]:
-                    if c in exr_data: res.append(f"{exr_data[c][py, px]:.3f}")
-                return f"HUD({', '.join(res)})"
+            groups = []
 
-            elif mode == Channels.MATERIAL_ID:
-                if Channels.MATERIAL_ID not in exr_data: return "N/A"
+            # 1. Albedo RGB
+            if all(c in exr_data for c in [Channels.ALBEDO_R, Channels.ALBEDO_G, Channels.ALBEDO_B]):
+                r, g, b = exr_data[Channels.ALBEDO_R][py, px], exr_data[Channels.ALBEDO_G][py, px], exr_data[Channels.ALBEDO_B][py, px]
+                groups.append(f"RGB:({r:.2f}, {g:.2f}, {b:.2f})")
+
+            # 2. Normal Map
+            if all(c in exr_data for c in [Channels.NORMAL_X, Channels.NORMAL_Y, Channels.NORMAL_Z]):
+                nx, ny, nz = exr_data[Channels.NORMAL_X][py, px], exr_data[Channels.NORMAL_Y][py, px], exr_data[Channels.NORMAL_Z][py, px]
+                groups.append(f"Norm:({nx:.2f}, {ny:.2f}, {nz:.2f})")
+
+            # 3. Depth
+            if Channels.DEPTH_Z in exr_data:
+                z = exr_data[Channels.DEPTH_Z][py, px]
+                groups.append(f"Z:{z:.4f}")
+
+            # 4. Material ID
+            if Channels.MATERIAL_ID in exr_data:
                 val = int(exr_data[Channels.MATERIAL_ID][py, px])
-                
-                presence_bit = (val >> 7) & 1
-                list_type_val = (val >> 4) & 0b111
-                has_texture = (val >> 3) & 1
-                is_gouraud = (val >> 2) & 1
-                has_bumpmap = (val >> 1) & 1
-                fog_ctrl = val & 1
+                groups.append(f"ID:{val}")
 
-                list_type_map = {0: "Opaque", 1: "Opaque Mod", 2: "Translucent", 3: "Translucent Mod", 4: "Punch-Through"}
-                list_type_str = list_type_map.get(list_type_val, f"Unknown ({list_type_val})")
-                presence_str = "Present" if presence_bit else "Background"
+            # 5. HUD
+            if all(c in exr_data for c in [Channels.HUD_R, Channels.HUD_G, Channels.HUD_B, Channels.HUD_A]):
+                hr, hg, hb, ha = exr_data[Channels.HUD_R][py, px], exr_data[Channels.HUD_G][py, px], exr_data[Channels.HUD_B][py, px], exr_data[Channels.HUD_A][py, px]
+                groups.append(f"HUD:({hr:.2f}, {hg:.2f}, {hb:.2f}, {ha:.2f})")
 
-                return (f"ID: {val} | List: {list_type_str} | Tex: {'Y' if has_texture else 'N'} | "
-                        f"Gouraud: {'Y' if is_gouraud else 'N'} | Bump: {'Y' if has_bumpmap else 'N'} | Fog: {fog_ctrl}")
+            # 6. Metadata (Pos, Hash, Poly)
+            meta_parts = []
+            if all(c in exr_data for c in [Channels.METADATA_WORLDPOS_X, Channels.METADATA_WORLDPOS_Y, Channels.METADATA_WORLDPOS_Z]):
+                px_val = exr_data[Channels.METADATA_WORLDPOS_X][py, px]
+                py_val = exr_data[Channels.METADATA_WORLDPOS_Y][py, px]
+                pz_val = exr_data[Channels.METADATA_WORLDPOS_Z][py, px]
+                meta_parts.append(f"Pos:({px_val:.1f}, {py_val:.1f}, {pz_val:.1f})")
+            
+            if Channels.METADATA_TEXTURE_HASH in exr_data:
+                th = int(exr_data[Channels.METADATA_TEXTURE_HASH][py, px])
+                meta_parts.append(f"Hash:0x{th:08X}")
+            
+            if Channels.METADATA_POLY_COUNT in exr_data:
+                pc = int(exr_data[Channels.METADATA_POLY_COUNT][py, px])
+                meta_parts.append(f"Poly:{pc}")
+            
+            if meta_parts:
+                groups.append(" ".join(meta_parts))
 
-            elif mode == Channels.METADATA_TEXTURE_HASH:
-                if Channels.METADATA_TEXTURE_HASH not in exr_data: return "N/A"
-                val = exr_data[Channels.METADATA_TEXTURE_HASH][py, px]
-                return f"TexHash: 0x{int(val):08X}"
+            return " | ".join(groups) if groups else "N/A"
 
-            elif mode == Channels.COMBINED_METADATA:
-                parts = []
-                # Pos
-                p_x = exr_data.get(Channels.METADATA_WORLDPOS_X, [None]*py)[py, px] if Channels.METADATA_WORLDPOS_X in exr_data else None
-                p_y = exr_data.get(Channels.METADATA_WORLDPOS_Y, [None]*py)[py, px] if Channels.METADATA_WORLDPOS_Y in exr_data else None
-                p_z = exr_data.get(Channels.METADATA_WORLDPOS_Z, [None]*py)[py, px] if Channels.METADATA_WORLDPOS_Z in exr_data else None
-                if p_x is not None: parts.append(f"Pos:({p_x:.2f}, {p_y:.2f}, {p_z:.2f})")
-                
-                # Tex
-                if Channels.METADATA_TEXTURE_HASH in exr_data:
-                    t_h = exr_data[Channels.METADATA_TEXTURE_HASH][py, px]
-                    parts.append(f"Tex:0x{int(t_h):08X}")
-                
-                # Poly
-                if Channels.METADATA_POLY_COUNT in exr_data:
-                    p_c = int(exr_data[Channels.METADATA_POLY_COUNT][py, px])
-                    parts.append(f"Poly:{p_c}")
-                
-                return " | ".join(parts) if parts else "N/A"
-
-            elif mode == Channels.DEPTH_Z:
-                if Channels.DEPTH_Z not in exr_data: return "N/A"
-                val = exr_data[Channels.DEPTH_Z][py, px]
-                return f"Depth (1/W): {val:.6f}"
-
-            elif mode in exr_data:
-                val = exr_data[mode][py, px]
-                return f"{val:.4f}"
         except Exception as e:
             print(f"Picker Error: {e}")
         return "N/A"

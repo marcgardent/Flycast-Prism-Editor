@@ -191,7 +191,7 @@ class FlycastViewer(ctk.CTk):
         self.inspect_entry.pack(pady=5, padx=20, fill="x")
 
         # Magnifier Panel (Fixed in sidebar)
-        self.magnifier_frame = ctk.CTkFrame(self.sidebar, fg_color="#1a1a1a", corner_radius=8, border_width=1, border_color="#333333", height=320)
+        self.magnifier_frame = ctk.CTkFrame(self.sidebar, fg_color="#1a1a1a", corner_radius=8, border_width=1, border_color="#333333", height=360)
         self.magnifier_frame.pack(pady=10, padx=20, fill="x")
         self.magnifier_frame.pack_propagate(False) # Ensure the frame doesn't shrink when empty
         
@@ -201,8 +201,8 @@ class FlycastViewer(ctk.CTk):
         self.magnifier_label.pack(pady=10, padx=10)
         
         self.value_info_label = ctk.CTkLabel(self.magnifier_frame, text="HOVER OVER IMAGE", font=ctk.CTkFont(family="Consolas", size=11),
-                                             fg_color="transparent", text_color="#3498db")
-        self.value_info_label.pack(pady=(0, 10))
+                                             fg_color="transparent", text_color="#3498db", wraplength=250)
+        self.value_info_label.pack(pady=(0, 10), padx=10)
 
         # Appearance mode
         self.appearance_mode_label = ctk.CTkLabel(self.sidebar, text="Appearance Mode:", anchor="w")
@@ -940,7 +940,7 @@ class FlycastViewer(ctk.CTk):
 
     def on_image_click(self, event):
         if self.current_pixel_value != "N/A":
-            display_text = f"{self.current_view_mode}: {self.current_pixel_value}"
+            display_text = self.current_pixel_value
             self.inspect_entry.delete(0, "end")
             self.inspect_entry.insert(0, display_text)
             self.log(f"Inspected: {display_text}")
@@ -1016,7 +1016,7 @@ class FlycastViewer(ctk.CTk):
         orig_x, orig_y = int((x / disp_w) * orig_w), int((y / disp_h) * orig_h)
 
         if 0 <= orig_x < orig_w and 0 <= orig_y < orig_h:
-            self.current_pixel_value = ImageProcessor.get_pixel_raw_values(self.current_view_mode, orig_x, orig_y, self.current_exr_data)
+            self.current_pixel_value = ImageProcessor.get_pixel_raw_values(orig_x, orig_y, self.current_exr_data)
         else:
             self.current_pixel_value = "N/A"
 
