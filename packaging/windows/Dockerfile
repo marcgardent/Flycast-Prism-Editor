@@ -1,6 +1,7 @@
 # --- STAGE 1 : Base PyInstaller for Windows ---
 FROM batonogov/pyinstaller-windows:latest AS env-base
 
+
 # --- STAGE 2 : Dependencies ---
 FROM env-base AS env-deps
 COPY packaging/windows/requirements.txt /tmp/requirements.txt
