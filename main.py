@@ -438,6 +438,14 @@ class FlycastViewer(ctk.CTk):
              orig_w, orig_h = self.image_size
              return int(mx * orig_w / dw), int(my * orig_h / dh)
 
+    def _get_safe_zone_bounds(self):
+        if self.image_size[0] == 0: return 0, 0, 0, 0
+        w, h = self.image_size
+        scale = h / HudCompositor.VIRT_H
+        safeW = HudCompositor.VIRT_W * scale
+        safeX = (w - safeW) / 2.0
+        return safeX, 0, safeW, h
+
     def _on_hud_mouse_down(self, event):
         ox, oy = self._get_orig_coords(event)
         self.drag_start_orig = (ox, oy)
@@ -470,33 +478,70 @@ class FlycastViewer(ctk.CTk):
                 self.drag_rect_start = r.copy()
                 return
         
-        self.select_hud_rect(-1)
+        # Creation mode if empty space
+        self.drag_mode = 'create'
+        new_rect = {"name": f"Rectangle {len(self.hud_rects)+1}", "x": ox, "y": oy, "w": 0, "h": 0}
+        self.hud_rects.append(new_rect)
+        self.select_hud_rect(len(self.hud_rects)-1)
+        self.drag_rect_start = new_rect.copy()
 
     def _on_hud_mouse_move(self, event):
         if not self.drag_mode or self.selected_rect_idx == -1: return
         
         ox, oy = self._get_orig_coords(event)
+        sx, sy, sw, sh = self._get_safe_zone_bounds()
+        
+        # Constrain ox, oy to safe zone
+        ox = max(sx, min(sx + sw, ox))
+        oy = max(sy, min(sy + sh, oy))
+        
         dx, dy = ox - self.drag_start_orig[0], oy - self.drag_start_orig[1]
         r = self.hud_rects[self.selected_rect_idx]
         s = self.drag_rect_start
         
         if self.drag_mode == 'move':
-            r["x"], r["y"] = s["x"] + dx, s["y"] + dy
+            # Constrain whole rect movement to safe zone
+            new_x = s["x"] + dx
+            new_y = s["y"] + dy
+            r["x"] = max(sx, min(sx + sw - r["w"], new_x))
+            r["y"] = max(sy, min(sy + sh - r["h"], new_y))
+            
         elif self.drag_mode == 'nw':
-            r["x"], r["y"] = s["x"] + dx, s["y"] + dy
-            r["w"], r["h"] = max(10, s["w"] - dx), max(10, s["h"] - dy)
+            r["x"] = max(sx, min(s["x"] + s["w"] - 10, s["x"] + dx))
+            r["y"] = max(sy, min(s["y"] + s["h"] - 10, s["y"] + dy))
+            r["w"] = s["x"] + s["w"] - r["x"]
+            r["h"] = s["y"] + s["h"] - r["y"]
+            
         elif self.drag_mode == 'ne':
-            r["y"] = s["y"] + dy
-            r["w"], r["h"] = max(10, s["w"] + dx), max(10, s["h"] - dy)
+            r["y"] = max(sy, min(s["y"] + s["h"] - 10, s["y"] + dy))
+            r["w"] = max(10, min(sx + sw - s["x"], s["w"] + dx))
+            r["h"] = s["y"] + s["h"] - r["y"]
+            
         elif self.drag_mode == 'sw':
-            r["x"] = s["x"] + dx
-            r["w"], r["h"] = max(10, s["w"] - dx), max(10, s["h"] + dy)
+            r["x"] = max(sx, min(s["x"] + s["w"] - 10, s["x"] + dx))
+            r["w"] = s["x"] + s["w"] - r["x"]
+            r["h"] = max(10, min(sy + sh - s["y"], s["h"] + dy))
+            
         elif self.drag_mode == 'se':
-            r["w"], r["h"] = max(10, s["w"] + dx), max(10, s["h"] + dy)
+            r["w"] = max(10, min(sx + sw - s["x"], s["w"] + dx))
+            r["h"] = max(10, min(sy + sh - s["y"], s["h"] + dy))
+            
+        elif self.drag_mode == 'create':
+            # Handle all directions for creation
+            x1, y1 = self.drag_start_orig
+            x2, y2 = ox, oy
+            r["x"], r["y"] = min(x1, x2), min(y1, y2)
+            r["w"], r["h"] = abs(x2 - x1), abs(y2 - y1)
             
         self.refresh_image_display()
 
     def _on_hud_mouse_up(self, event):
+        if self.drag_mode == 'create' and self.selected_rect_idx != -1:
+            r = self.hud_rects[self.selected_rect_idx]
+            # If too small, delete it (accidental click)
+            if r["w"] < 5 or r["h"] < 5:
+                self.delete_selected_rect()
+        
         self.drag_mode = None
         self.update_hud_list()
 
