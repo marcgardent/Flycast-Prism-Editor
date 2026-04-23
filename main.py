@@ -1,6 +1,14 @@
+import sys
+try:
+    # ACTIVATION DU MODE 'PER-MONITOR V2' POUR WINDOWS (AVANT TOUT IMPORT GRAPHIQUE)
+    if sys.platform.startswith("win"):
+        import ctypes
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+except Exception:
+    pass
+
 import os
 import customtkinter as ctk
-import ctypes
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageOps, ImageDraw
 import numpy as np
@@ -12,24 +20,35 @@ from exr_loader import EXRLoader
 from image_processor import ImageProcessor
 from hud_compositor import HudCompositor, Anchor
 
+# FIX KDE PLASMA / LINUX : Évite la déformation des boutons ("os")
+try:
+    ctk.DrawEngine.preferred_drawing_method = "circle_shapes"
+except AttributeError:
+    # Selon la version de CTK, l'attribut peut varier ou être interne
+    pass
+
 # Global UI Settings for better aesthetics
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
 class FlycastViewer(ctk.CTk):
     def __init__(self):
-        # Enable High DPI awareness before any widget creation
+        super().__init__()
+
+        # LOGIQUE DE DÉTECTION DYNAMIQUE DU SCALING (LINUX/KDE COMPATIBLE)
         try:
-            # For Windows
-            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+            # winfo_fpixels('1i') retourne le nombre de pixels par pouce logique
+            # 96 est la valeur standard pour un scaling de 100% (1.0)
+            scaling_factor = self.winfo_fpixels('1i') / 96.0
+            ctk.set_widget_scaling(scaling_factor)
+            ctk.set_window_scaling(scaling_factor)
         except Exception:
+            # Fallback sur le scaling automatique du moteur CTK
             pass
 
-        # Set scaling based on system (CustomTkinter usually does this, but we can be explicit)
-        # ctk.set_widget_scaling(1.0) 
-        # ctk.set_window_scaling(1.0)
-
-        super().__init__()
+        # DIAGNOSTIC DE COMPILATION (VÉRIFICATION XFT SUR LINUX)
+        # Pour vérifier si Tkinter est lié à Xft : root.eval("tk::pkgconfig get fontsystem")
+        # Si cela retourne "xft", le rendu des polices sera net. Sinon ("x11"), elles seront pixélisées.
 
         self.title("Flycast G-Buffer Viewer")
         self.geometry("1500x900")
@@ -445,21 +464,18 @@ class FlycastViewer(ctk.CTk):
         self.display_size = (int(img_w * ratio), int(img_h * ratio))
 
         if self.display_size[0] > 0 and self.display_size[1] > 0:
-            # For high-quality display and High DPI support:
-            # We don't pre-resize the image to the display size anymore.
-            # Instead, we pass the high-res image to CTkImage and let it handle the scaling.
-            # This ensures that on High DPI screens, we use the extra resolution available.
+            # OPTIMISATION DES ASSETS : Utilisation de CTkImage pour le HiDPI
+            # On conserve une résolution source élevée pour un rendu cible net via filtre Lanczos
             
-            # However, to avoid memory issues with huge images, we can resize to 2x display size if needed
-            # as a compromise between quality and performance.
             scaling = self._get_window_scaling()
             target_w = int(self.display_size[0] * scaling)
             target_h = int(self.display_size[1] * scaling)
             
-            # Only resize if the source is significantly larger than what we need
-            if display_pil.width > target_w * 1.2 or display_pil.height > target_h * 1.2:
+            # Oversampling via Lanczos pour garantir une netteté cristalline
+            if display_pil.width > target_w or display_pil.height > target_h:
                 display_pil = display_pil.resize((target_w, target_h), Image.Resampling.LANCZOS)
             
+            # La classe CTkImage gère le scaling interne pour les écrans Retina/HiDPI
             ctk_img = ctk.CTkImage(light_image=display_pil, dark_image=display_pil, size=self.display_size)
             self.display_label.configure(image=ctk_img)
             self.display_label.image = ctk_img # Keep a reference
