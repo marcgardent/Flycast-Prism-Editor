@@ -245,6 +245,11 @@ class FlycastViewer(ctk.CTk):
                                                variable=self.hud_zen_var, command=self.toggle_zen_mode)
         self.hud_zen_checkbox.pack(pady=5, padx=15, anchor="w")
 
+        self.delete_rect_btn = ctk.CTkButton(self.hud_compositor_tab, text="DELETE", command=self.delete_selected_rect, fg_color="#c0392b", hover_color="#e74c3c")
+        self.delete_rect_btn.pack(pady=5, padx=15, fill="x")
+        self.delete_rect_btn.configure(state="disabled")
+
+
         self.hud_path_label = ctk.CTkLabel(self.hud_compositor_tab, text="No file opened", 
                                           font=ctk.CTkFont(size=10), text_color="#777777", wraplength=180)
         self.hud_path_label.pack(pady=(10, 0), padx=15, fill="x")
@@ -259,7 +264,6 @@ class FlycastViewer(ctk.CTk):
         self.save_as_hud_btn = ctk.CTkButton(self.hud_compositor_tab, text="SAVE AS", command=self.save_hud_json_as)
         self.save_as_hud_btn.pack(pady=(5, 10), padx=15, fill="x")
 
-        self.delete_rect_btn = ctk.CTkButton(self.hud_compositor_tab, text="DELETE", command=self.delete_selected_rect)
 
 
         # Channels List (moved to G-Buffer Viewer tab)
@@ -302,7 +306,7 @@ class FlycastViewer(ctk.CTk):
         self.image_container.pack(fill="both", expand=True)
 
         # Bottom Panel with Tabs
-        self.bottom_panel = ctk.CTkFrame(self.center_container, height=180, corner_radius=0, border_width=1, border_color="#222222")
+        self.bottom_panel = ctk.CTkFrame(self.center_container, height=280, corner_radius=0, border_width=1, border_color="#222222")
         self.bottom_panel.pack(side="bottom", fill="x")
         self.bottom_panel.pack_propagate(False) # Keep fixed height
         
@@ -320,16 +324,20 @@ class FlycastViewer(ctk.CTk):
         self.info_box.insert("0.0", "SYSTEM READY\n")
         
         # Setup Pixel Request Tab
-        self.pixel_req_entry = ctk.CTkEntry(tab_pixel, placeholder_text="Enter Pixel Request...", font=ctk.CTkFont(family="Consolas", size=12))
-        self.pixel_req_entry.pack(side="left", fill="x", expand=True, padx=10, pady=20)
+        self.pixel_req_entry = ctk.CTkTextbox(tab_pixel, font=ctk.CTkFont(family="Consolas", size=12), border_width=1, border_color="#333333")
+        self.pixel_req_entry.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+        self.pixel_req_entry.insert("0.0", "# Enter Pixel Request here...\n")
+        
         self.pixel_req_btn = ctk.CTkButton(tab_pixel, text="EVALUATE", command=self.evaluate_pixel_request, width=120)
-        self.pixel_req_btn.pack(side="right", padx=10, pady=20)
+        self.pixel_req_btn.pack(side="right", padx=10, pady=10)
         
         # Setup Poly Request Tab
-        self.poly_req_entry = ctk.CTkEntry(tab_poly, placeholder_text="Enter Poly Request...", font=ctk.CTkFont(family="Consolas", size=12))
-        self.poly_req_entry.pack(side="left", fill="x", expand=True, padx=10, pady=20)
+        self.poly_req_entry = ctk.CTkTextbox(tab_poly, font=ctk.CTkFont(family="Consolas", size=12), border_width=1, border_color="#333333")
+        self.poly_req_entry.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+        self.poly_req_entry.insert("0.0", "# Enter Poly Request here...\n")
+        
         self.poly_req_btn = ctk.CTkButton(tab_poly, text="EVALUATE", command=self.evaluate_poly_request, width=120)
-        self.poly_req_btn.pack(side="right", padx=10, pady=20)
+        self.poly_req_btn.pack(side="right", padx=10, pady=10)
 
 
         self.display_label = ctk.CTkLabel(self.image_container, text="", cursor="crosshair")
@@ -1177,12 +1185,12 @@ class FlycastViewer(ctk.CTk):
         ctk.set_appearance_mode(new_appearance_mode)
 
     def evaluate_pixel_request(self):
-        req = self.pixel_req_entry.get()
-        self.log(f"Pixel Request evaluated: {req}")
+        req = self.pixel_req_entry.get("0.0", "end-1c").strip()
+        self.log(f"Pixel Request evaluated:\n{req}")
 
     def evaluate_poly_request(self):
-        req = self.poly_req_entry.get()
-        self.log(f"Poly Request evaluated: {req}")
+        req = self.poly_req_entry.get("0.0", "end-1c").strip()
+        self.log(f"Poly Request evaluated:\n{req}")
 
     def _maximize_window(self):
         """Robust maximization for different platforms and window managers (KDE/X11)"""
