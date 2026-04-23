@@ -212,6 +212,7 @@ class FlycastViewer(ctk.CTk):
         self.display_label.bind("<B1-Motion>", self.on_mouse_move)
         self.display_label.bind("<ButtonRelease-1>", self.on_mouse_up)
         self.display_label.bind("<Leave>", self.hide_magnifier)
+        self.bind("<space>", self.toggle_hud_workspace)
 
     def _add_view_button(self, parent, text):
         btn = ctk.CTkButton(parent, text=text, command=lambda t=text: self.safe_update_view_mode(t),
@@ -248,6 +249,7 @@ class FlycastViewer(ctk.CTk):
         self.destroy()
 
     def hide_magnifier(self, event=None):
+        self.display_label.configure(cursor="")
         self.magnifier_label.place_forget()
         self.value_info_label.place_forget()
 
@@ -448,6 +450,12 @@ class FlycastViewer(ctk.CTk):
         safeW = HudCompositor.VIRT_W * scale
         safeX = (w - safeW) / 2.0
         return safeX, 0, safeW, h
+
+    def toggle_hud_workspace(self, event=None):
+        if self.tabview.get() == "HUD Compositor":
+            new_mode = "DESTINATION" if self.hud_workspace == "SOURCE" else "SOURCE"
+            self.hud_mode_btn.set(new_mode)
+            self._on_hud_workspace_changed(new_mode)
 
     def _on_hud_workspace_changed(self, mode):
         self.hud_workspace = mode
@@ -719,6 +727,23 @@ class FlycastViewer(ctk.CTk):
             self.log("Rien à copier (cliquez sur l'image d'abord)")
 
     def update_magnifier(self, event):
+        # Update cursor for HUD if applicable
+        if self.tabview.get() == "HUD Compositor":
+            ox, oy = self._get_orig_coords(event)
+            mode = self.hud_workspace
+            hover_rect = False
+            for r in self.hud_rects:
+                rx = r["sx"] if mode == "SOURCE" else r["dx"]
+                ry = r["sy"] if mode == "SOURCE" else r["dy"]
+                if rx <= ox <= rx + r["w"] and ry <= oy <= ry + r["h"]:
+                    hover_rect = True
+                    break
+            
+            if hover_rect:
+                self.display_label.configure(cursor="hand2")
+            else:
+                self.display_label.configure(cursor="")
+
         if not self.magnifier_var.get() or self.full_pil_image is None or self.is_loading:
             self.hide_magnifier()
             return
