@@ -110,8 +110,8 @@ class HudCompositor:
                 # Draw name
                 draw.text((rx + 5, ry + 5), r.get("name", f"Rect {i}"), fill=color)
                 
-                # Draw handles if selected
-                if is_selected:
+                # Draw handles if selected (SOURCE only)
+                if is_selected and mode == "SOURCE":
                     h_size = 6
                     handles = [
                         (rx, ry), (rx + rw, ry), 

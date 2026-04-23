@@ -467,8 +467,8 @@ class FlycastViewer(ctk.CTk):
         
         mode = self.hud_workspace
         
-        # Check for handles of selected rect first
-        if self.selected_rect_idx != -1:
+        # Check for handles of selected rect (SOURCE only)
+        if self.selected_rect_idx != -1 and mode == "SOURCE":
             r = self.hud_rects[self.selected_rect_idx]
             h_size = 15 # handle click area
             
@@ -522,10 +522,17 @@ class FlycastViewer(ctk.CTk):
         
         ox, oy = self._get_orig_coords(event)
         sx, sy, sw, sh = self._get_safe_zone_bounds()
+        iw, ih = self.image_size
         
-        # Constrain ox, oy to safe zone
-        ox = max(sx, min(sx + sw, ox))
-        oy = max(sy, min(sy + sh, oy))
+        # Constrain ox, oy to safe zone (for creation and handles)
+        # Note: if we are moving a destination rect, we might want ox/oy outside safe zone
+        if self.hud_workspace == "SOURCE" or self.drag_mode != 'move':
+            ox = max(sx, min(sx + sw, ox))
+            oy = max(sy, min(sy + sh, oy))
+        else:
+            # Full screen for destination move
+            ox = max(0, min(iw, ox))
+            oy = max(0, min(ih, oy))
         
         dx, dy = ox - self.drag_start_orig[0], oy - self.drag_start_orig[1]
         r = self.hud_rects[self.selected_rect_idx]
@@ -537,8 +544,9 @@ class FlycastViewer(ctk.CTk):
                 r["sx"] = max(sx, min(sx + sw - r["w"], s["sx"] + dx))
                 r["sy"] = max(sy, min(sy + sh - r["h"], s["sy"] + dy))
             else:
-                r["dx"] = max(sx, min(sx + sw - r["w"], s["dx"] + dx))
-                r["dy"] = max(sy, min(sy + sh - r["h"], s["dy"] + dy))
+                # DESTINATION: Full screen bounds
+                r["dx"] = max(0, min(iw - r["w"], s["dx"] + dx))
+                r["dy"] = max(0, min(ih - r["h"], s["dy"] + dy))
             
         elif self.drag_mode == 'nw':
             start_x = s["sx"] if mode == "SOURCE" else s["dx"]
@@ -581,16 +589,19 @@ class FlycastViewer(ctk.CTk):
             start_x = s["sx"] if mode == "SOURCE" else s["dx"]
             start_y = s["sy"] if mode == "SOURCE" else s["dy"]
             
-            r["w"] = max(10, min(sx + sw - start_x, s["w"] + dx))
-            r["h"] = max(10, min(sy + sh - start_y, s["h"] + dy))
+            r["w"], r["h"] = max(10, min(sx + sw - start_x, s["w"] + dx)), max(10, min(sy + sh - start_y, s["h"] + dy))
             
         elif self.drag_mode == 'create':
             x1, y1 = self.drag_start_orig
             x2, y2 = ox, oy
-            # Initial creation sets both sx/sy and dx/dy
             r["sx"], r["sy"] = min(x1, x2), min(y1, y2)
             r["dx"], r["dy"] = r["sx"], r["sy"]
             r["w"], r["h"] = abs(x2 - x1), abs(y2 - y1)
+            
+        # Screen-safe correction for destination position when size changes
+        if self.drag_mode in ['nw', 'ne', 'sw', 'se', 'create']:
+            r["dx"] = max(0, min(iw - r["w"], r["dx"]))
+            r["dy"] = max(0, min(ih - r["h"], r["dy"]))
             
         self.refresh_image_display()
 
