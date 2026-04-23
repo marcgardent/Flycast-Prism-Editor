@@ -4,9 +4,9 @@ set -e
 # Configuration
 APP_NAME="Flycast_G-Buffer_Viewer"
 ICON_PATH="/build/source/assets/logo-prism.png"
-DESKTOP_FILE="/build/source/packaging/linux/flycast-viewer.desktop"
+DESKTOP_FILE="/build/source/packaging/linux/flycast-prism-editor.desktop"
 APPDIR="/build/AppDir"
-CONDA_ENV_SOURCE="/opt/conda/envs/flycast-viewer"
+CONDA_ENV_SOURCE="/opt/conda/envs/flycast-prism-editor"
 
 # Get version info (injected via env vars or default)
 VERSION_STR=""
@@ -37,7 +37,7 @@ mkdir -p "$APPDIR"/usr/bin/assets
 cp /build/source/assets/* "$APPDIR"/usr/bin/assets/
 
 # Create a launcher that uses the conda-env python
-cat > "$APPDIR"/usr/bin/flycast-viewer <<EOF
+cat > "$APPDIR"/usr/bin/flycast-prism-editor <<EOF
 #!/bin/bash
 HERE="\$(dirname "\$(readlink -f "\$0")")"
 export PATH="\$HERE/../conda-env/bin:\$PATH"
@@ -45,7 +45,7 @@ export LD_LIBRARY_PATH="\$HERE/../conda-env/lib:\$LD_LIBRARY_PATH"
 export PYTHONHOME="\$HERE/../conda-env"
 exec "\$HERE/../conda-env/bin/python3" "\$HERE/main.py" "\$@"
 EOF
-chmod +x "$APPDIR"/usr/bin/flycast-viewer
+chmod +x "$APPDIR"/usr/bin/flycast-prism-editor
 
 echo "--- Running linuxdeploy ---"
 export OUTPUT="${APP_NAME}${VERSION_STR}-x86_64.AppImage"

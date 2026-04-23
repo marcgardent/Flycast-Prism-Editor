@@ -1,13 +1,13 @@
 # conda env create -f environment.yml
 # conda env update -f environment.yml --prune
 
-name: flycast-viewer
+name: flycast-prism-editor
 channels:
   - conda-forge
   - nodefaults
 dependencies:
   - python=3.10
-  - tk=*=xft_*  # Force l'installation du build avec support XFT
+  - tk=*=xft_*
   - numpy
   - pillow
   - pip

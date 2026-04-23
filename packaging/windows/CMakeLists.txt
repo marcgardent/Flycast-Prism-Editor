@@ -13,7 +13,7 @@ execute_process(
 # Get current date
 string(TIMESTAMP BUILD_DATE "%Y%m%d")
 
-set(DOCKER_IMAGE "flycast-viewer-win-builder")
+set(DOCKER_IMAGE "flycast-prism-editor-win-builder")
 set(ROOT_DIR "${CMAKE_SOURCE_DIR}")
 set(VERSION_STR "")
 if(GIT_REV)

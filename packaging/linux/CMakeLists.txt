@@ -13,7 +13,7 @@ execute_process(
 # Get current date
 string(TIMESTAMP BUILD_DATE "%Y%m%d")
 
-set(DOCKER_IMAGE "flycast-viewer-builder")
+set(DOCKER_IMAGE "flycast-prism-editor-linux-builder")
 set(ROOT_DIR "${CMAKE_SOURCE_DIR}")
 
 # Target to check if Git is clean
