@@ -344,30 +344,6 @@ class FlycastViewer(ctk.CTk):
         # Refresh display to show/hide safe zone or other tab-specific overlays
         self.refresh_image_display()
 
-    def _draw_safe_zone(self, pil_image):
-        """Draws a 640x480 ratio safe zone centered on the image."""
-        img_w, img_h = pil_image.size
-        
-        # Target ratio 640:480 = 4:3
-        target_ratio = 640 / 480
-        
-        # Height matches image height as per instruction: "La hauteur de l'image correspond à 480"
-        sz_h = img_h
-        sz_w = int(sz_h * target_ratio)
-        
-        # Center horizontally
-        x_offset = (img_w - sz_w) // 2
-        
-        draw = ImageDraw.Draw(pil_image)
-        
-        # Rectangle coordinates
-        rect = [x_offset, 0, x_offset + sz_w, sz_h]
-        
-        # Draw outline (Green for visibility)
-        draw.rectangle(rect, outline="#00ff00", width=3)
-        
-        # Draw thin crosshair or secondary markers if needed? (Instruction says "rectangle appelé safeZone")
-        # For now, just the rectangle.
 
     def on_resize(self, event=None):
         if self.last_numpy_image is not None and not self.is_loading:
@@ -389,10 +365,11 @@ class FlycastViewer(ctk.CTk):
         # Apply overlays based on active tab
         display_pil = self.full_pil_image
         if self.tabview.get() == "HUD Compositor":
-            display_pil = self.full_pil_image.copy()
-            HudCompositor.draw_overlay(display_pil)
+            display_pil = HudCompositor.draw_overlay(self.full_pil_image)
 
         img_w, img_h = display_pil.size
+        
+        # Le padding est maintenant géré à l'intérieur de HudCompositor.draw_overlay
         ratio = min(cont_w / img_w, cont_h / img_h)
         self.display_size = (int(img_w * ratio), int(img_h * ratio))
 
