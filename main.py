@@ -20,6 +20,7 @@ from tkinter import filedialog
 from exr_loader import EXRLoader
 from image_processor import ImageProcessor
 from hud_compositor import HudCompositor, Anchor
+from hud_config import HudConfig
 
 # FIX KDE PLASMA / LINUX: Prevents widget deformation ("os")
 try:
@@ -53,6 +54,10 @@ class FlycastViewer(ctk.CTk):
 
         self.title("Flycast Prism Editor")
         self.geometry("1500x900")
+        self.minsize(1200, 800) # Prevent sidebars from clipping
+
+        # MAXIMIZE WINDOW ON START (with robust delay for Linux/KDE)
+        self.after(200, self._maximize_window)
 
         # Application State
         self.current_exr_data = {}
@@ -315,7 +320,8 @@ class FlycastViewer(ctk.CTk):
         self.splash_hint.pack()
 
         self.hide_loading()
-        self.image_container.bind("<Configure>", self.on_resize)
+        # Bind resize to the main window to handle layout shifts better
+        self.bind("<Configure>", self.on_resize)
         self.display_label.bind("<Motion>", self.update_magnifier)
         self.display_label.bind("<Button-1>", self.on_mouse_down)
         self.display_label.bind("<B1-Motion>", self.on_mouse_move)
@@ -505,11 +511,18 @@ class FlycastViewer(ctk.CTk):
 
 
     def on_resize(self, event=None):
+        # Force layout update to ensure dimensions are fresh (critical for KDE maximization)
+        self.update_idletasks()
+
         # Prevent jitter by checking if the actual dimensions changed
         cont_w, cont_h = self.image_container.winfo_width(), self.image_container.winfo_height()
         if hasattr(self, "_last_size") and self._last_size == (cont_w, cont_h):
             return
         self._last_size = (cont_w, cont_h)
+        
+        # Force sidebar refresh
+        self.nav_sidebar.update()
+        self.sidebar.update()
 
         if self.last_numpy_image is not None and not self.is_loading:
             self.refresh_image_display()
@@ -792,64 +805,7 @@ class FlycastViewer(ctk.CTk):
             self.log("Aucune zone HUD à exporter.")
             return
 
-        orig_w, orig_h = self.image_size
-        v_scale = 480.0 / orig_h
-        VW = orig_w * v_scale
-        
-        # Anchors in Virtual Space
-        v_anchors = HudCompositor.get_anchor_table(orig_w, orig_h)
-        v_anchors = {k: (v[0] * v_scale, v[1] * v_scale) for k, v in v_anchors.items()}
-        
-        source_anchor_vpos = v_anchors[Anchor.SCREEN_CENTER]
-        
-        hud_zones = []
-        for r in self.hud_rects:
-            vsx, vsy = r["sx"] * v_scale, r["sy"] * v_scale
-            src_x = int(round(vsx - source_anchor_vpos[0]))
-            src_y = int(round(vsy - source_anchor_vpos[1]))
-            
-            vdx, vdy = r["dx"] * v_scale, r["dy"] * v_scale
-            anchor_enum = r["anchor"]
-            if isinstance(anchor_enum, str): anchor_enum = Anchor[anchor_enum]
-            
-            dest_anchor_vpos = v_anchors[anchor_enum]
-            map_x = int(round(vdx - dest_anchor_vpos[0]))
-            map_y = int(round(vdy - dest_anchor_vpos[1]))
-            
-            zone = {
-                "name": r["name"],
-                "w": int(round(r["w"] * v_scale)),
-                "h": int(round(r["h"] * v_scale)),
-                "zen_mode": r.get("zen", False),
-                "source": {
-                    "x": src_x,
-                    "y": src_y,
-                    "anchor": "SCREEN_CENTER"
-                },
-                "mapping": {
-                    "x": map_x,
-                    "y": map_y,
-                    "anchor": anchor_enum.name
-                }
-            }
-            hud_zones.append(zone)
-            
-        export_data = {
-            "safe_zone": {"w": 640, "h": 480},
-            "hud_zones": hud_zones
-        }
-        
-        # Smart Save: Preserve other keys
-        if path and os.path.exists(path):
-            try:
-                with open(path, "r") as f:
-                    existing_data = json.load(f)
-                existing_data.update(export_data)
-                export_data = existing_data
-            except Exception as e:
-                self.log(f"Error reading existing file: {e}")
-
-        json_str = json.dumps(export_data, indent=2)
+        export_data = HudConfig.export(self.hud_rects, self.image_size, path)
         
         if to_file:
             if not path:
@@ -857,8 +813,7 @@ class FlycastViewer(ctk.CTk):
                                                      filetypes=[("JSON files", "*.json")],
                                                      title="Save HUD Compositor")
             if path:
-                with open(path, "w") as f:
-                    f.write(json_str)
+                HudConfig.save(export_data, path)
                 self.current_hud_path = path
                 self.hud_path_label.configure(text=os.path.basename(path))
                 self.save_hud_btn.configure(state="normal")
@@ -883,69 +838,7 @@ class FlycastViewer(ctk.CTk):
         if not file_path: return
 
         try:
-            with open(file_path, "r") as f:
-                data = json.load(f)
-            
-            if "hud_zones" not in data:
-                raise KeyError("hud_zones")
-
-            orig_w, orig_h = self.image_size
-            v_scale = 480.0 / orig_h
-            
-            v_anchors = HudCompositor.get_anchor_table(orig_w, orig_h)
-            v_anchors = {k: (v[0] * v_scale, v[1] * v_scale) for k, v in v_anchors.items()}
-            source_anchor_vpos = v_anchors[Anchor.SCREEN_CENTER]
-
-            new_hud_rects = []
-            for i, zone in enumerate(data["hud_zones"]):
-                try:
-                    # Required fields check
-                    for field in ["name", "w", "h", "source", "mapping"]:
-                        if field not in zone:
-                            raise KeyError(f"'{field}' is missing")
-                    
-                    for field in ["x", "y"]:
-                        if field not in zone["source"]:
-                            raise KeyError(f"source.'{field}' is missing")
-                        if field not in zone["mapping"]:
-                            raise KeyError(f"mapping.'{field}' is missing")
-                    
-                    if "anchor" not in zone["mapping"]:
-                        raise KeyError("mapping.'anchor' is missing")
-
-                    v_w = zone["w"]
-                    v_h = zone["h"]
-                    
-                    # Convert source back
-                    vsx = zone["source"]["x"] + source_anchor_vpos[0]
-                    vsy = zone["source"]["y"] + source_anchor_vpos[1]
-                    
-                    # Convert destination back
-                    anchor_name = zone["mapping"]["anchor"]
-                    try:
-                        anchor_enum = Anchor[anchor_name]
-                    except KeyError:
-                        raise ValueError(f"Invalid anchor name: '{anchor_name}'")
-                        
-                    dest_anchor_vpos = v_anchors[anchor_enum]
-                    vdx = zone["mapping"]["x"] + dest_anchor_vpos[0]
-                    vdy = zone["mapping"]["y"] + dest_anchor_vpos[1]
-                    
-                    new_rect = {
-                        "name": zone["name"],
-                        "sx": vsx / v_scale,
-                        "sy": vsy / v_scale,
-                        "dx": vdx / v_scale,
-                        "dy": vdy / v_scale,
-                        "w": v_w / v_scale,
-                        "h": v_h / v_scale,
-                        "anchor": anchor_enum,
-                        "zen": zone.get("zen_mode", False)
-                    }
-                    new_hud_rects.append(new_rect)
-                except (KeyError, ValueError) as e:
-                    zone_name = zone.get("name", "Unnamed")
-                    raise RuntimeError(f"Zone #{i} ('{zone_name}'): {e}")
+            new_hud_rects = HudConfig.load(file_path, self.image_size)
             
             self.hud_rects = new_hud_rects
             self.current_hud_path = file_path
@@ -1126,6 +1019,22 @@ class FlycastViewer(ctk.CTk):
 
     def _change_appearance_mode_event(self, new_appearance_mode: str):
         ctk.set_appearance_mode(new_appearance_mode)
+
+    def _maximize_window(self):
+        """Robust maximization for different platforms and window managers (KDE/X11)"""
+        try:
+            if sys.platform.startswith("win"):
+                self.state("zoomed")
+            else:
+                # Try X11 attribute first
+                self.attributes("-zoomed", True)
+                # Fallback to state if attribute didn't work or isn't enough for some WMs
+                try:
+                    self.state("zoomed")
+                except:
+                    pass
+        except Exception as e:
+            print(f"Maximization failed: {e}")
 
 if __name__ == "__main__":
     app = FlycastViewer()
