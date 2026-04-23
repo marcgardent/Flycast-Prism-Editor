@@ -169,6 +169,7 @@ class FlycastViewer(ctk.CTk):
 
     def _setup_sidebar(self):
         self.sidebar = ctk.CTkFrame(self, width=350, corner_radius=0)
+        self.sidebar.pack_propagate(False) # Prevent content from expanding sidebar
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_remove() # Hide initially for splash screen
 
