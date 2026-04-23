@@ -292,15 +292,45 @@ class FlycastViewer(ctk.CTk):
 
         ctk.CTkLabel(self.inspector_container, text="INSPECTOR (IMAGE CLICK)", font=ctk.CTkFont(size=13, weight="bold")).pack(side="bottom", pady=(10, 5))
 
-        # Console
-        self.info_box = ctk.CTkTextbox(self.sidebar, height=140, font=ctk.CTkFont(family="Consolas", size=11), fg_color="#0f0f0f",
-                                       text_color="#00ff00", border_width=1, border_color="#333333")
-        self.info_box.pack(side="bottom", fill="x", padx=20, pady=20)
-        self.info_box.insert("0.0", "SYSTEM READY\n")
+        # Console has been moved to the bottom panel
 
     def _setup_image_area(self):
-        self.image_container = ctk.CTkFrame(self, fg_color="#050505", corner_radius=0)
-        self.image_container.grid(row=0, column=1, sticky="nsew")
+        self.center_container = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
+        self.center_container.grid(row=0, column=1, sticky="nsew")
+
+        self.image_container = ctk.CTkFrame(self.center_container, fg_color="#050505", corner_radius=0)
+        self.image_container.pack(fill="both", expand=True)
+
+        # Bottom Panel with Tabs
+        self.bottom_panel = ctk.CTkFrame(self.center_container, height=180, corner_radius=0, border_width=1, border_color="#222222")
+        self.bottom_panel.pack(side="bottom", fill="x")
+        self.bottom_panel.pack_propagate(False) # Keep fixed height
+        
+        self.bottom_tabs = ctk.CTkTabview(self.bottom_panel)
+        self.bottom_tabs.pack(fill="both", expand=True, padx=10, pady=0)
+        
+        tab_console = self.bottom_tabs.add("Console")
+        tab_pixel = self.bottom_tabs.add("Pixel Request")
+        tab_poly = self.bottom_tabs.add("Poly Request")
+        
+        # Setup Console Tab
+        self.info_box = ctk.CTkTextbox(tab_console, font=ctk.CTkFont(family="Consolas", size=11), fg_color="#0f0f0f",
+                                       text_color="#00ff00", border_width=1, border_color="#333333")
+        self.info_box.pack(fill="both", expand=True, padx=5, pady=5)
+        self.info_box.insert("0.0", "SYSTEM READY\n")
+        
+        # Setup Pixel Request Tab
+        self.pixel_req_entry = ctk.CTkEntry(tab_pixel, placeholder_text="Enter Pixel Request...", font=ctk.CTkFont(family="Consolas", size=12))
+        self.pixel_req_entry.pack(side="left", fill="x", expand=True, padx=10, pady=20)
+        self.pixel_req_btn = ctk.CTkButton(tab_pixel, text="EVALUATE", command=self.evaluate_pixel_request, width=120)
+        self.pixel_req_btn.pack(side="right", padx=10, pady=20)
+        
+        # Setup Poly Request Tab
+        self.poly_req_entry = ctk.CTkEntry(tab_poly, placeholder_text="Enter Poly Request...", font=ctk.CTkFont(family="Consolas", size=12))
+        self.poly_req_entry.pack(side="left", fill="x", expand=True, padx=10, pady=20)
+        self.poly_req_btn = ctk.CTkButton(tab_poly, text="EVALUATE", command=self.evaluate_poly_request, width=120)
+        self.poly_req_btn.pack(side="right", padx=10, pady=20)
+
 
         self.display_label = ctk.CTkLabel(self.image_container, text="", cursor="crosshair")
         self.display_label.place(relx=0.5, rely=0.5, anchor="center")
@@ -1145,6 +1175,14 @@ class FlycastViewer(ctk.CTk):
 
     def _change_appearance_mode_event(self, new_appearance_mode: str):
         ctk.set_appearance_mode(new_appearance_mode)
+
+    def evaluate_pixel_request(self):
+        req = self.pixel_req_entry.get()
+        self.log(f"Pixel Request evaluated: {req}")
+
+    def evaluate_poly_request(self):
+        req = self.poly_req_entry.get()
+        self.log(f"Poly Request evaluated: {req}")
 
     def _maximize_window(self):
         """Robust maximization for different platforms and window managers (KDE/X11)"""
