@@ -26,7 +26,7 @@ class BottomPanelComponent(ctk.CTkFrame):
         self.pixel_req_entry.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         self.pixel_req_entry.insert("0.0", "# Enter Pixel Request here...\n")
         
-        self.pixel_req_btn = ctk.CTkButton(tab_pixel, text="EVALUATE", command=self.callbacks.get('on_eval_pixel'), width=120)
+        self.pixel_req_btn = ctk.CTkButton(tab_pixel, text="EVALUATE", command=lambda: self.callbacks.get('on_eval_pixel', lambda x: None)(self.pixel_req_entry.get("0.0", "end")), width=120)
         self.pixel_req_btn.pack(side="right", padx=10, pady=10)
         
         # Setup Poly Request Tab
@@ -34,8 +34,11 @@ class BottomPanelComponent(ctk.CTkFrame):
         self.poly_req_entry.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         self.poly_req_entry.insert("0.0", "# Enter Poly Request here...\n")
         
-        self.poly_req_btn = ctk.CTkButton(tab_poly, text="EVALUATE", command=self.callbacks.get('on_eval_poly'), width=120)
+        self.poly_req_btn = ctk.CTkButton(tab_poly, text="EVALUATE", command=lambda: self.callbacks.get('on_eval_poly', lambda x: None)(self.poly_req_entry.get("0.0", "end")), width=120)
         self.poly_req_btn.pack(side="right", padx=10, pady=10)
+
+        self.poly_clear_btn = ctk.CTkButton(tab_poly, text="CLEAR", command=self.callbacks.get('on_clear_mask'), width=80, fg_color="#C0392B", hover_color="#922B21")
+        self.poly_clear_btn.pack(side="right", padx=10, pady=10)
 
     def log(self, text, clear=False):
         if clear: self.info_box.delete("0.0", "end")

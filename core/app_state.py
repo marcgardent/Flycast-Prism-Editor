@@ -17,6 +17,7 @@ class AppState:
         self.current_pixel_value = "N/A"
         self.last_clicked_event = None
         self.is_loading = False
+        self.expression_mask = None
 
         # HUD Compositor State
         self.hud_rects = []

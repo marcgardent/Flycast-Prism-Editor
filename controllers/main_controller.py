@@ -5,6 +5,7 @@ from core.app_state import AppState
 from exr_loader import EXRLoader
 from image_processor import ImageProcessor
 from constants import STANDARD_CHANNELS, Channels
+import numpy as np
 
 class MainController:
     def __init__(self, ui_root):
@@ -25,6 +26,24 @@ class MainController:
             self.ui.bottom_panel.log(text, clear)
         else:
             print(f"LOG: {text}")
+
+    def on_eval_poly(self, expression):
+        if not expression or expression.isspace():
+            return
+        if self.interaction_ctrl:
+            self.interaction_ctrl.evaluate_expression(expression.strip())
+
+    def on_eval_pixel(self, expression):
+        if not expression or expression.isspace():
+            return
+        if self.interaction_ctrl:
+            # For now, treat pixel evaluation same as poly
+            self.interaction_ctrl.evaluate_expression(expression.strip())
+
+    def on_clear_mask(self):
+        self.state.expression_mask = None
+        self.log("Mask cleared.")
+        self.refresh_image_display()
 
     def on_open_click(self):
         if self.state.is_loading: return
@@ -144,6 +163,21 @@ class MainController:
         raw_pil = Image.fromarray(self.state.last_numpy_image)
         self.state.full_pil_image = ImageOps.expand(raw_pil, border=HudCompositor.PADDING, fill=(10, 10, 10))
         display_pil = self.state.full_pil_image.copy()
+        
+        # Apply Expression Mask
+        if self.state.expression_mask is not None:
+            mask_expanded = np.pad(self.state.expression_mask, pad_width=HudCompositor.PADDING, mode='constant', constant_values=False)
+            
+            # Create a red overlay image
+            overlay = Image.new('RGBA', display_pil.size, (255, 0, 0, 0))
+            overlay_data = np.array(overlay)
+            overlay_data[mask_expanded, 0] = 255 # R
+            overlay_data[mask_expanded, 3] = 128 # A
+            
+            overlay_pil = Image.fromarray(overlay_data, 'RGBA')
+            display_pil = display_pil.convert('RGBA')
+            display_pil.alpha_composite(overlay_pil)
+            display_pil = display_pil.convert('RGB')
         
         # Apply overlays based on active tab
         active_tab = self.ui.nav_sidebar.tabview.get()

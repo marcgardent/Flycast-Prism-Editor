@@ -1,7 +1,11 @@
 import json
 import customtkinter as ctk
 from PIL import Image, ImageOps, ImageDraw
+import numpy as np
+import threading
+import cexprtk
 from image_processor import ImageProcessor
+from constants import Channels
 
 class InteractionController:
     def __init__(self, main_controller):
@@ -146,3 +150,108 @@ class InteractionController:
         self.mc.ui.sidebar.magnifier_label.configure(image=None)
         self.mc.state.current_pixel_value = {}
         self.mc.ui.sidebar.update_info_table({})
+
+    def evaluate_expression(self, expr_string):
+        st = self.mc.state
+        if st.full_pil_image is None or not st.current_exr_data:
+            self.mc.log("No EXR data available for evaluation.")
+            return
+
+        self.mc.log(f"Evaluating: {expr_string}...")
+        self.mc.ui.image_area.show_loading("EVALUATING...")
+        
+        # Start background thread to avoid freezing UI
+        thread = threading.Thread(target=self._eval_thread, args=(expr_string,))
+        thread.daemon = True
+        thread.start()
+
+    def _eval_thread(self, expr_string):
+        st = self.mc.state
+        exr_data = st.current_exr_data
+        h, w = st.image_size
+        
+        # Extract channels into 1D flattened arrays to speed up access
+        channels_map = {
+            'R': Channels.ALBEDO_R, 'G': Channels.ALBEDO_G, 'B': Channels.ALBEDO_B,
+            'WP_X': Channels.METADATA_WORLDPOS_X, 'WP_Y': Channels.METADATA_WORLDPOS_Y, 'WP_Z': Channels.METADATA_WORLDPOS_Z,
+            'N_X': Channels.NORMAL_X, 'N_Y': Channels.NORMAL_Y, 'N_Z': Channels.NORMAL_Z,
+            'Z': Channels.DEPTH_Z,
+            'TH': Channels.METADATA_TEXTURE_HASH, 'PC': Channels.METADATA_POLY_COUNT,
+            'MID_RAW': Channels.MATERIAL_ID
+        }
+        
+        arrays = {}
+        for var_name, ch_name in channels_map.items():
+            if ch_name in exr_data:
+                arrays[var_name] = exr_data[ch_name].flatten()
+            else:
+                arrays[var_name] = np.zeros(h * w, dtype=np.float32)
+
+        # Decompose MID into its separate arrays
+        mid_raw = arrays.get('MID_RAW', np.zeros(h * w, dtype=np.float32))
+        mid_int = mid_raw.astype(np.int32)
+        
+        list_type_val = (mid_int >> 4) & 0b111
+        arrays['MID_OPAQUE'] = (list_type_val == 0).astype(np.float32)
+        arrays['MID_OPAQUE_MOD'] = (list_type_val == 1).astype(np.float32)
+        arrays['MID_TRANSLUCENT'] = (list_type_val == 2).astype(np.float32)
+        arrays['MID_TRANSLUCENT_MOD'] = (list_type_val == 3).astype(np.float32)
+        arrays['MID_PUNCH_THROUGH'] = (list_type_val == 4).astype(np.float32)
+        
+        arrays['MID_HAS_TEX'] = ((mid_int >> 3) & 1).astype(np.float32)
+        arrays['MID_GOURAUD'] = ((mid_int >> 2) & 1).astype(np.float32)
+        arrays['MID_HAS_BUMP'] = ((mid_int >> 1) & 1).astype(np.float32)
+        arrays['MID_FOG'] = (mid_int & 1).astype(np.float32)
+        
+        # To avoid passing MID_RAW directly if user expects MID, alias it:
+        arrays['MID'] = mid_raw
+
+        # Set up cexprtk
+        sym_dict = {k: 0.0 for k in arrays.keys()}
+        try:
+            symbol_table = cexprtk.Symbol_Table(sym_dict, add_constants=True)
+            expression = cexprtk.Expression(expr_string, symbol_table)
+        except Exception as e:
+            self.mc.ui.after(0, self._eval_done, None, f"Parse Error: {e}")
+            return
+
+        mask_flat = np.zeros(h * w, dtype=bool)
+        
+        total_pixels = h * w
+        
+        try:
+            # We must iterate over all pixels. Since we use Python loop, this might be slow.
+            # Using st.variables directly to update Symbol_Table is the way.
+            # Convert arrays to python lists for slightly faster inner loop access if memory permits,
+            # but direct numpy indexing is okay too.
+            var_refs = symbol_table.variables
+            
+            # For optimal speed, pre-fetch variable reference dict keys and arrays
+            keys = list(arrays.keys())
+            arr_refs = [arrays[k] for k in keys]
+            
+            for i in range(total_pixels):
+                # Update symbol table
+                for k, arr in zip(keys, arr_refs):
+                    var_refs[k] = float(arr[i])
+                    
+                val = expression.value()
+                if val > 0:
+                    mask_flat[i] = True
+                    
+        except Exception as e:
+            self.mc.ui.after(0, self._eval_done, None, f"Eval Error: {e}")
+            return
+
+        mask_2d = mask_flat.reshape((h, w))
+        self.mc.ui.after(0, self._eval_done, mask_2d, "Evaluation complete.")
+
+    def _eval_done(self, mask, msg):
+        st = self.mc.state
+        st.is_loading = False
+        self.mc.ui.image_area.hide_loading()
+        self.mc.log(msg)
+        
+        if mask is not None:
+            st.expression_mask = mask
+            self.mc.refresh_image_display()
