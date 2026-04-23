@@ -2,7 +2,7 @@
 set -e
 
 # Configuration
-APP_NAME="Flycast_G-Buffer_Viewer"
+APP_NAME="flycast-prism-editor"
 VERSION_STR=""
 
 if [ -n "$GIT_REV" ]; then
