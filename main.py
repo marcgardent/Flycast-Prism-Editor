@@ -149,12 +149,18 @@ class FlycastViewer(ctk.CTk):
         self.inspect_entry = ctk.CTkEntry(self.sidebar, placeholder_text="Valeur copiée ici...", height=35)
         self.inspect_entry.pack(pady=5, padx=20, fill="x")
 
-        # Section Outils
-        ctk.CTkLabel(self.sidebar, text="OUTILS", font=ctk.CTkFont(size=13, weight="bold")).pack(pady=(25, 5))
-        self.magnifier_var = ctk.BooleanVar(value=True)
-        self.magnifier_switch = ctk.CTkSwitch(self.sidebar, text="Loupe Pixel-Perfect (1:1)",
-                                              variable=self.magnifier_var)
-        self.magnifier_switch.pack(pady=5, padx=20, anchor="w")
+        # Magnifier Panel (Fixed in sidebar)
+        self.magnifier_frame = ctk.CTkFrame(self.sidebar, fg_color="#1a1a1a", corner_radius=8, border_width=1, border_color="#333333")
+        self.magnifier_frame.pack(pady=10, padx=20, fill="x")
+        
+        ctk.CTkLabel(self.magnifier_frame, text="LOUPE PIXEL-PERFECT (1:1)", font=ctk.CTkFont(size=10, weight="bold"), text_color="#777777").pack(pady=(5, 0))
+        
+        self.magnifier_label = ctk.CTkLabel(self.magnifier_frame, text="", fg_color="black", width=240, height=240)
+        self.magnifier_label.pack(pady=10, padx=10)
+        
+        self.value_info_label = ctk.CTkLabel(self.magnifier_frame, text="SURVOLEZ L'IMAGE", font=ctk.CTkFont(family="Consolas", size=11),
+                                             fg_color="transparent", text_color="#3498db")
+        self.value_info_label.pack(pady=(0, 10))
 
         # Theme switch
         self.appearance_mode_label = ctk.CTkLabel(self.sidebar, text="Mode d'apparence:", anchor="w")
@@ -269,9 +275,7 @@ class FlycastViewer(ctk.CTk):
                                            fg_color="#c0392b", hover_color="#e74c3c", width=100, height=28)
         self.cancel_button.pack(pady=(0, 20))
 
-        self.magnifier_label = ctk.CTkLabel(self.image_container, text="", fg_color="transparent")
-        self.value_info_label = ctk.CTkLabel(self.image_container, text="", font=ctk.CTkFont(size=12, weight="bold"),
-                                             fg_color="#3498db", text_color="white", corner_radius=4)
+        self.hide_loading()
 
         # Splash Screen (visible when no EXR)
         self.splash_frame = ctk.CTkFrame(self.image_container, fg_color="transparent")
@@ -347,8 +351,9 @@ class FlycastViewer(ctk.CTk):
 
     def hide_magnifier(self, event=None):
         self.display_label.configure(cursor="")
-        self.magnifier_label.place_forget()
-        self.value_info_label.place_forget()
+        # Clear the fixed magnifier labels instead of hiding them
+        self.magnifier_label.configure(image="")
+        self.value_info_label.configure(text="SURVOLEZ L'IMAGE", text_color="#777777")
 
     def open_file(self):
         if self.is_loading: return
@@ -1023,7 +1028,7 @@ class FlycastViewer(ctk.CTk):
             else:
                 self.display_label.configure(cursor="")
 
-        if not self.magnifier_var.get() or self.full_pil_image is None or self.is_loading:
+        if self.full_pil_image is None or self.is_loading:
             self.hide_magnifier()
             return
 
@@ -1056,16 +1061,8 @@ class FlycastViewer(ctk.CTk):
             zoom_ctk = ctk.CTkImage(light_image=zoomed, dark_image=zoomed, size=(self.magnifier_size + 4, self.magnifier_size + 4))
 
             self.magnifier_label.configure(image=zoom_ctk)
-            self.value_info_label.configure(text=f" {self.current_pixel_value} ")
-
-            mx = x + self.display_label.winfo_x() + 40
-            my = y + self.display_label.winfo_y() + 40
-            if mx + self.magnifier_size > self.image_container.winfo_width(): mx -= (self.magnifier_size + 80)
-            if my + self.magnifier_size > self.image_container.winfo_height(): my -= (self.magnifier_size + 80)
-
-            self.magnifier_label.place(x=mx, y=my)
-            info_y = my + self.magnifier_size + 15 if my + self.magnifier_size + 50 < self.image_container.winfo_height() else my - 35
-            self.value_info_label.place(x=mx, y=info_y)
+            self.magnifier_label.image = zoom_ctk # Keep reference
+            self.value_info_label.configure(text=f" {self.current_pixel_value} ", text_color="#3498db")
         except Exception:
             self.hide_magnifier()
 
