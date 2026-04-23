@@ -63,7 +63,7 @@ class HudCompositor:
         draw.polygon(points, outline=color, fill=None, width=2)
 
     @staticmethod
-    def draw_overlay(pil_image, user_rects=None, selected_idx=-1):
+    def draw_overlay(pil_image, user_rects=None, selected_idx=-1, mode="SOURCE"):
         # On crée une nouvelle image avec du padding pour que les losanges aux bords soient visibles
         padded_img = ImageOps.expand(pil_image, border=HudCompositor.PADDING, fill=(10, 10, 10)) # Fond très sombre pour le padding
         draw = ImageDraw.Draw(padded_img)
@@ -71,33 +71,30 @@ class HudCompositor:
         orig_w, orig_h = pil_image.size
         p = HudCompositor.PADDING
         
-        # 1. Safe Zone Rectangle (calculté sur dimensions originales, dessiné avec offset)
-        scale = orig_h / HudCompositor.VIRT_H
-        safeW = HudCompositor.VIRT_W * scale
-        safeX = (orig_w - safeW) / 2.0
-        
-        rect = [safeX + p, p, safeX + safeW + p, orig_h + p]
-        draw.rectangle(rect, outline="#00ff00", width=3)
-        
-        # 2. Anchors
-        anchors = HudCompositor.get_anchor_table(orig_w, orig_h)
-        
-        for anchor, pos in anchors.items():
-            # Offset par le padding
-            draw_pos = (pos[0] + p, pos[1] + p)
+        # 1. Safe Zone Rectangle (SOURCE only)
+        if mode == "SOURCE":
+            scale = orig_h / HudCompositor.VIRT_H
+            safeW = HudCompositor.VIRT_W * scale
+            safeX = (orig_w - safeW) / 2.0
             
-            # Green for safe zone anchors, Purple (Mauve) for screen anchors
-            if "SAFE_ZONE" in anchor.name:
-                color = "#00ff00" # Green
-            else:
-                color = "#9b59b6" # Purple (Amethyst/Mauve)
-                
-            HudCompositor.draw_diamond(draw, draw_pos, size=12, color=color)
+            rect = [safeX + p, p, safeX + safeW + p, orig_h + p]
+            draw.rectangle(rect, outline="#00ff00", width=3)
+        
+        # 2. Anchors (DESTINATION only)
+        if mode == "DESTINATION":
+            anchors = HudCompositor.get_anchor_table(orig_w, orig_h)
+            for anchor, pos in anchors.items():
+                draw_pos = (pos[0] + p, pos[1] + p)
+                if "SAFE_ZONE" in anchor.name:
+                    color = "#00ff00" # Green
+                else:
+                    color = "#9b59b6" # Purple (Amethyst/Mauve)
+                HudCompositor.draw_diamond(draw, draw_pos, size=12, color=color)
             
         # 3. User Rectangles
         if user_rects:
             for i, r in enumerate(user_rects):
-                is_selected = (i == selected_idx)
+                is_selected = (i == selected_idx and mode == "SOURCE")
                 color = "#f1c40f" if is_selected else "#e67e22" # Yellow if selected, Orange otherwise
                 width = 3 if is_selected else 2
                 
@@ -108,10 +105,9 @@ class HudCompositor:
                 # Draw name
                 draw.text((rx + 5, ry + 5), r.get("name", f"Rect {i}"), fill=color)
                 
-                # Draw handles if selected
+                # Draw handles if selected (SOURCE only)
                 if is_selected:
                     h_size = 6
-                    # Handles: NW, NE, SW, SE
                     handles = [
                         (rx, ry), (rx + rw, ry), 
                         (rx, ry + rh), (rx + rw, ry + rh)

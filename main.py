@@ -37,6 +37,7 @@ class FlycastViewer(ctk.CTk):
         self.drag_mode = None # None, 'move', 'nw', 'ne', 'sw', 'se'
         self.drag_start_orig = None
         self.drag_rect_start = None
+        self.hud_workspace = "SOURCE"
 
         # Logo
         self.logo_image = None
@@ -131,8 +132,14 @@ class FlycastViewer(ctk.CTk):
         self.copy_json_button.pack(pady=10, padx=15, fill="x")
 
         # HUD Compositor Tab UI
-        ctk.CTkButton(self.hud_compositor_tab, text="+ AJOUTER RECTANGLE", command=self.add_hud_rect,
-                      fg_color="#2980b9", hover_color="#3498db").pack(pady=10, padx=15, fill="x")
+        self.hud_mode_btn = ctk.CTkSegmentedButton(self.hud_compositor_tab, values=["SOURCE", "DESTINATION"],
+                                                  command=self._on_hud_workspace_changed)
+        self.hud_mode_btn.set("SOURCE")
+        self.hud_mode_btn.pack(pady=10, padx=15, fill="x")
+
+        self.add_rect_btn = ctk.CTkButton(self.hud_compositor_tab, text="+ AJOUTER RECTANGLE", command=self.add_hud_rect,
+                      fg_color="#2980b9", hover_color="#3498db")
+        self.add_rect_btn.pack(pady=10, padx=15, fill="x")
         
         self.hud_list_frame = ctk.CTkScrollableFrame(self.hud_compositor_tab, height=200, fg_color="transparent")
         self.hud_list_frame.pack(fill="x", padx=5, pady=5)
@@ -391,7 +398,7 @@ class FlycastViewer(ctk.CTk):
         # Apply overlays based on active tab
         display_pil = self.full_pil_image
         if self.tabview.get() == "HUD Compositor":
-            display_pil = HudCompositor.draw_overlay(self.full_pil_image, self.hud_rects, self.selected_rect_idx)
+            display_pil = HudCompositor.draw_overlay(self.full_pil_image, self.hud_rects, self.selected_rect_idx, self.hud_workspace)
 
         img_w, img_h = display_pil.size
         
@@ -446,7 +453,21 @@ class FlycastViewer(ctk.CTk):
         safeX = (w - safeW) / 2.0
         return safeX, 0, safeW, h
 
+    def _on_hud_workspace_changed(self, mode):
+        self.hud_workspace = mode
+        # Disable editing controls in DESTINATION mode
+        state = "normal" if mode == "SOURCE" else "disabled"
+        self.add_rect_btn.configure(state=state)
+        self.hud_name_entry.configure(state=state)
+        if mode != "SOURCE":
+            self.delete_rect_btn.configure(state="disabled")
+        elif self.selected_rect_idx != -1:
+            self.delete_rect_btn.configure(state="normal")
+            
+        self.refresh_image_display()
+
     def _on_hud_mouse_down(self, event):
+        if self.hud_workspace != "SOURCE": return
         ox, oy = self._get_orig_coords(event)
         self.drag_start_orig = (ox, oy)
         
