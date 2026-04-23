@@ -29,27 +29,20 @@ class InteractionController:
     def on_mouse_leave(self, event):
         self.hide_magnifier()
 
-    def _get_orig_coords(self, x, y):
+    def _get_orig_coords(self, mx, my):
         st = self.mc.state
         if st.display_size[0] == 0 or st.display_size[1] == 0: return 0, 0
+        dw, dh = st.display_size
         
-        # HUD coordinates logic (padding) should be here eventually,
-        # but for now we do standard translation.
-        # Once HUD is fully integrated, we need the padding offset.
-        active_tab = self.mc.ui.nav_sidebar.tabview.get()
-        if active_tab == "HUD Compositor":
-            from hud_compositor import HudCompositor
-            dw, dh = st.display_size
-            orig_w, orig_h = st.image_size
-            p = HudCompositor.PADDING
-            padded_w, padded_h = orig_w + 2*p, orig_h + 2*p
-            px = int(x * padded_w / dw)
-            py = int(y * padded_h / dh)
-            return px - p, py - p
-        else:
-            dw, dh = st.display_size
-            orig_w, orig_h = st.image_size
-            return int(x * orig_w / dw), int(y * orig_h / dh)
+        orig_w, orig_h = st.image_size
+        
+        from hud_compositor import HudCompositor
+        p = HudCompositor.PADDING
+        padded_w, padded_h = orig_w + 2*p, orig_h + 2*p
+        
+        px = int(mx * padded_w / dw)
+        py = int(my * padded_h / dh)
+        return px - p, py - p
 
     def on_image_click(self, event):
         if self.mc.state.current_pixel_value:

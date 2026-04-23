@@ -86,12 +86,13 @@ class HudCompositor:
 
     @staticmethod
     def draw_overlay(pil_image, user_rects=None, selected_idx=-1, mode="SOURCE"):
-        # Create a new image with padding so diamonds at the edges are visible
-        padded_img = ImageOps.expand(pil_image, border=HudCompositor.PADDING, fill=(10, 10, 10)) # Very dark background for padding
+        # The image is already padded globally
+        padded_img = pil_image.copy()
         draw = ImageDraw.Draw(padded_img)
         
-        orig_w, orig_h = pil_image.size
         p = HudCompositor.PADDING
+        orig_w = padded_img.width - 2 * p
+        orig_h = padded_img.height - 2 * p
         
         # Scale line thickness based on resolution to keep it consistent
         base_h = 1080.0

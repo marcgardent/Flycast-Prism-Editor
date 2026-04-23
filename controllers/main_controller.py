@@ -138,8 +138,12 @@ class MainController:
         cont_w, cont_h = self.ui.image_area.winfo_width(), self.ui.image_area.winfo_height()
         if cont_w < 50 or cont_h < 50: return
 
-        self.state.full_pil_image = Image.fromarray(self.state.last_numpy_image)
-        display_pil = self.state.full_pil_image
+        from PIL import ImageOps
+        from hud_compositor import HudCompositor
+        
+        raw_pil = Image.fromarray(self.state.last_numpy_image)
+        self.state.full_pil_image = ImageOps.expand(raw_pil, border=HudCompositor.PADDING, fill=(10, 10, 10))
+        display_pil = self.state.full_pil_image.copy()
         
         # Apply overlays based on active tab
         active_tab = self.ui.nav_sidebar.tabview.get()

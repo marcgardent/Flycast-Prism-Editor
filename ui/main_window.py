@@ -94,12 +94,18 @@ class MainWindow(ctk.CTk):
 
     def set_ui_visibility(self, visible):
         if visible:
+            self.grid_columnconfigure(0, minsize=350)
+            self.grid_columnconfigure(2, minsize=320)
             self.nav_sidebar.grid()
             self.sidebar.grid()
+            self.bottom_panel.pack(side="bottom", fill="x")
             self.image_area.hide_splash()
         else:
+            self.grid_columnconfigure(0, minsize=0)
+            self.grid_columnconfigure(2, minsize=0)
             self.nav_sidebar.grid_remove()
             self.sidebar.grid_remove()
+            self.bottom_panel.pack_forget()
             self.image_area.show_splash()
 
     def _maximize_window(self):

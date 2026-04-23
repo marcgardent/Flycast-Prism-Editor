@@ -31,9 +31,22 @@ class ImageAreaComponent(ctk.CTkFrame):
 
         # Splash Screen
         self.splash_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.splash_frame.place(relx=0.5, rely=0.5, anchor="center")
+        import os
+        from PIL import Image
 
         self.splash_logo = ctk.CTkLabel(self.splash_frame, text="")
+        
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "logo-prism.png")
+        if os.path.exists(logo_path):
+            try:
+                pil_logo = Image.open(logo_path)
+                h = 100
+                w = int(pil_logo.width * (h / pil_logo.height))
+                self.logo_image = ctk.CTkImage(light_image=pil_logo, dark_image=pil_logo, size=(w, h))
+                self.splash_logo.configure(image=self.logo_image)
+            except Exception as e:
+                pass
+                
         self.splash_logo.pack(pady=20)
         
         self.splash_btn = ctk.CTkButton(self.splash_frame, text="OPEN EXR FILE", command=lambda: self.callbacks.get('on_open_click', lambda: None)(),
