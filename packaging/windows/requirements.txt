@@ -1,6 +1,8 @@
-numpy
-pillow
+PyYAML
+cexprtk
 customtkinter
-OpenImageIO
 imageio
+numpy
+openimageio
+pillow
 platformdirs

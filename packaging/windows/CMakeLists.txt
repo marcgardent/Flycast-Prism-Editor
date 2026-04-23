@@ -25,9 +25,10 @@ endif()
 
 # Target to build the Windows Docker image
 add_custom_target(docker-build-win
+    COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/sync_requirements.py
     COMMAND docker build -t ${DOCKER_IMAGE} -f ${CMAKE_CURRENT_SOURCE_DIR}/Dockerfile ${ROOT_DIR}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Building Windows Docker build image (batonogov base)"
+    COMMENT "Syncing requirements and building Windows Docker build image"
 )
 
 # Target to generate the Windows EXE

@@ -16,3 +16,5 @@ dependencies:
     - platformdirs
     - openimageio
     - imageio
+    - cexprtk
+    - PyYAML
