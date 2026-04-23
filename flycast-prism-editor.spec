@@ -26,7 +26,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='flycast-viewer',
+    name='flycast-prism-editor',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
