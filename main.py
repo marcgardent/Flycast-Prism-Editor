@@ -137,10 +137,6 @@ class FlycastViewer(ctk.CTk):
         self.hud_mode_btn.set("SOURCE")
         self.hud_mode_btn.pack(pady=10, padx=15, fill="x")
 
-        self.add_rect_btn = ctk.CTkButton(self.hud_compositor_tab, text="+ AJOUTER RECTANGLE", command=self.add_hud_rect,
-                      fg_color="#2980b9", hover_color="#3498db")
-        self.add_rect_btn.pack(pady=10, padx=15, fill="x")
-        
         self.hud_list_frame = ctk.CTkScrollableFrame(self.hud_compositor_tab, height=200, fg_color="transparent")
         self.hud_list_frame.pack(fill="x", padx=5, pady=5)
         
@@ -457,7 +453,6 @@ class FlycastViewer(ctk.CTk):
         self.hud_workspace = mode
         # Disable editing controls in DESTINATION mode
         state = "normal" if mode == "SOURCE" else "disabled"
-        self.add_rect_btn.configure(state=state)
         self.hud_name_entry.configure(state=state)
         if mode != "SOURCE":
             self.delete_rect_btn.configure(state="disabled")
@@ -499,12 +494,16 @@ class FlycastViewer(ctk.CTk):
                 self.drag_rect_start = r.copy()
                 return
         
-        # Creation mode if empty space
-        self.drag_mode = 'create'
-        new_rect = {"name": f"Rectangle {len(self.hud_rects)+1}", "x": ox, "y": oy, "w": 0, "h": 0}
-        self.hud_rects.append(new_rect)
-        self.select_hud_rect(len(self.hud_rects)-1)
-        self.drag_rect_start = new_rect.copy()
+        # Creation mode if empty space AND inside safe zone
+        sx, sy, sw, sh = self._get_safe_zone_bounds()
+        if sx <= ox <= sx + sw and sy <= oy <= sy + sh:
+            self.drag_mode = 'create'
+            new_rect = {"name": f"Rectangle {len(self.hud_rects)+1}", "x": ox, "y": oy, "w": 0, "h": 0}
+            self.hud_rects.append(new_rect)
+            self.select_hud_rect(len(self.hud_rects)-1)
+            self.drag_rect_start = new_rect.copy()
+        else:
+            self.select_hud_rect(-1)
 
     def _on_hud_mouse_move(self, event):
         if not self.drag_mode or self.selected_rect_idx == -1: return
