@@ -37,10 +37,10 @@ add_custom_target(publish-win
     # The batonogov image builds into /src/dist/ which is mapped to ${ROOT_DIR}/dist/
     COMMAND docker run --rm 
         -v ${ROOT_DIR}:/src 
-        -e SPECFILE=flycast-viewer.spec 
+        -e SPECFILE=flycast-prism-editor.spec
         ${DOCKER_IMAGE}
     # Rename and move the output to the output/ directory
-    COMMAND ${CMAKE_COMMAND} -E rename ${ROOT_DIR}/dist/flycast-viewer.exe ${ROOT_DIR}/output/Flycast_G-Buffer_Viewer${VERSION_STR}.exe
+    COMMAND ${CMAKE_COMMAND} -E rename ${ROOT_DIR}/dist/flycast-prism-editor.exe ${ROOT_DIR}/output/Flycast_Prism_Editor${VERSION_STR}.exe
     COMMAND ${CMAKE_COMMAND} -E remove_directory ${ROOT_DIR}/build
     COMMAND ${CMAKE_COMMAND} -E remove_directory ${ROOT_DIR}/dist
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}

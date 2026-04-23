@@ -44,13 +44,13 @@ RUN wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous
 FROM env-linuxdeploy AS  env-project
 
 COPY environment.yml /tmp/environment.yml
-RUN conda env create -v -f /tmp/environment.yml -n flycast-viewer && \
+RUN conda env create -v -f /tmp/environment.yml -n flycast-prism-editor && \
     /opt/conda/bin/conda clean -afy && \
-    find /opt/conda/envs/flycast-viewer -type d -name "tests" -exec rm -rf {} + && \
-    find /opt/conda/envs/flycast-viewer -type d -name "__pycache__" -exec rm -rf {} + && \
-    rm -rf /opt/conda/envs/flycast-viewer/include && \
-    rm -rf /opt/conda/envs/flycast-viewer/share/man && \
-    rm -rf /opt/conda/envs/flycast-viewer/share/doc
+    find /opt/conda/envs/flycast-prism-editor -type d -name "tests" -exec rm -rf {} + && \
+    find /opt/conda/envs/flycast-prism-editor -type d -name "__pycache__" -exec rm -rf {} + && \
+    rm -rf /opt/conda/envs/flycast-prism-editor/include && \
+    rm -rf /opt/conda/envs/flycast-prism-editor/share/man && \
+    rm -rf /opt/conda/envs/flycast-prism-editor/share/doc
 
 WORKDIR /build
 COPY . /build/source
