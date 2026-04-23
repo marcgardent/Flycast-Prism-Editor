@@ -39,6 +39,7 @@ class FlycastViewer(ctk.CTk):
         self.drag_start_orig = None
         self.drag_rect_start = None
         self.hud_workspace = "SOURCE"
+        self.current_hud_path = None
 
         # Logo
         self.logo_image = None
@@ -151,14 +152,25 @@ class FlycastViewer(ctk.CTk):
                                                variable=self.hud_zen_var, command=self.toggle_zen_mode)
         self.hud_zen_checkbox.pack(pady=5, padx=15, anchor="w")
 
+        self.hud_path_label = ctk.CTkLabel(self.hud_compositor_tab, text="Aucun fichier ouvert", 
+                                          font=ctk.CTkFont(size=10), text_color="#777777", wraplength=180)
+        self.hud_path_label.pack(pady=(10, 0), padx=15, fill="x")
+
+        self.load_hud_btn = ctk.CTkButton(self.hud_compositor_tab, text="CHARGER JSON", command=self.load_hud_json,
+                                         fg_color="#34495e", hover_color="#2c3e50")
+        self.load_hud_btn.pack(pady=5, padx=15, fill="x")
+
+        self.save_hud_btn = ctk.CTkButton(self.hud_compositor_tab, text="SAUVEGARDER", command=self.save_hud_json,
+                                         fg_color="#27ae60", hover_color="#2ecc71")
+        self.save_hud_btn.pack(pady=5, padx=15, fill="x")
+        self.save_hud_btn.configure(state="disabled")
+
+        self.save_as_hud_btn = ctk.CTkButton(self.hud_compositor_tab, text="SAUVEGARDER SOUS", command=self.save_hud_json_as,
+                                            fg_color="#2980b9", hover_color="#3498db")
+        self.save_as_hud_btn.pack(pady=(5, 10), padx=15, fill="x")
+
         self.delete_rect_btn = ctk.CTkButton(self.hud_compositor_tab, text="SUPPRIMER", command=self.delete_selected_rect,
                                             fg_color="#c0392b", hover_color="#e74c3c")
-        self.delete_rect_btn.pack(pady=5, padx=15, fill="x")
-        self.delete_rect_btn.configure(state="disabled")
-
-        self.save_hud_btn = ctk.CTkButton(self.hud_compositor_tab, text="SAUVEGARDER JSON", command=self.save_hud_json,
-                                         fg_color="#27ae60", hover_color="#2ecc71")
-        self.save_hud_btn.pack(pady=10, padx=15, fill="x")
 
 
         # Modes Composites (moved to G-Buffer Viewer tab)
@@ -652,7 +664,7 @@ class FlycastViewer(ctk.CTk):
         self.select_hud_rect(len(self.hud_rects)-1)
         self.refresh_image_display()
 
-    def export_hud_json(self, to_file=False):
+    def export_hud_json(self, to_file=False, path=None):
         if not self.hud_rects:
             self.log("Aucune zone HUD à exporter.")
             return
@@ -704,18 +716,105 @@ class FlycastViewer(ctk.CTk):
             "hud_zones": hud_zones
         }
         
+        # Smart Save: Preserve other keys
+        if path and os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    existing_data = json.load(f)
+                existing_data.update(export_data)
+                export_data = existing_data
+            except Exception as e:
+                self.log(f"Erreur lecture fichier existant: {e}")
+
         json_str = json.dumps(export_data, indent=2)
         
-        file_path = filedialog.asksaveasfilename(defaultextension=".json",
-                                                 filetypes=[("JSON files", "*.json")],
-                                                 title="Sauvegarder HUD Compositor")
-        if file_path:
-            with open(file_path, "w") as f:
-                f.write(json_str)
-            self.log(f"HUD Sauvegardé dans: {os.path.basename(file_path)}")
-
+        if to_file:
+            if not path:
+                path = filedialog.asksaveasfilename(defaultextension=".json",
+                                                     filetypes=[("JSON files", "*.json")],
+                                                     title="Sauvegarder HUD Compositor")
+            if path:
+                with open(path, "w") as f:
+                    f.write(json_str)
+                self.current_hud_path = path
+                self.hud_path_label.configure(text=os.path.basename(path))
+                self.save_hud_btn.configure(state="normal")
+                self.log(f"HUD Sauvegardé dans: {os.path.basename(path)}")
+        
     def save_hud_json(self):
-        self.export_hud_json()
+        if self.current_hud_path:
+            self.export_hud_json(to_file=True, path=self.current_hud_path)
+        else:
+            self.save_hud_json_as()
+
+    def save_hud_json_as(self):
+        self.export_hud_json(to_file=True)
+
+    def load_hud_json(self):
+        if not self.full_pil_image:
+            self.log("Chargez une image EXR avant d'importer le HUD.")
+            return
+
+        file_path = filedialog.askopenfilename(filetypes=[("JSON files", "*.json")],
+                                               title="Charger HUD Compositor")
+        if not file_path: return
+
+        try:
+            with open(file_path, "r") as f:
+                data = json.load(f)
+            
+            if "hud_zones" not in data:
+                self.log("Format JSON invalide (hud_zones manquante).")
+                return
+
+            orig_w, orig_h = self.image_size
+            v_scale = 480.0 / orig_h
+            VW = orig_w * v_scale
+            
+            v_anchors = HudCompositor.get_anchor_table(orig_w, orig_h)
+            v_anchors = {k: (v[0] * v_scale, v[1] * v_scale) for k, v in v_anchors.items()}
+            source_anchor_vpos = v_anchors[Anchor.SCREEN_CENTER]
+
+            new_hud_rects = []
+            for zone in data["hud_zones"]:
+                v_w = zone["w"]
+                v_h = zone["h"]
+                
+                # Convert source back
+                vsx = zone["source"]["x"] + source_anchor_vpos[0]
+                vsy = zone["source"]["y"] + source_anchor_vpos[1]
+                
+                # Convert destination back
+                anchor_name = zone["mapping"]["anchor"]
+                anchor_enum = Anchor[anchor_name]
+                dest_anchor_vpos = v_anchors[anchor_enum]
+                vdx = zone["mapping"]["x"] + dest_anchor_vpos[0]
+                vdy = zone["mapping"]["y"] + dest_anchor_vpos[1]
+                
+                new_rect = {
+                    "name": zone["name"],
+                    "sx": vsx / v_scale,
+                    "sy": vsy / v_scale,
+                    "dx": vdx / v_scale,
+                    "dy": vdy / v_scale,
+                    "w": v_w / v_scale,
+                    "h": v_h / v_scale,
+                    "anchor": anchor_enum,
+                    "zen": zone.get("zen_mode", False)
+                }
+                new_hud_rects.append(new_rect)
+            
+            self.hud_rects = new_hud_rects
+            self.current_hud_path = file_path
+            self.hud_path_label.configure(text=os.path.basename(file_path))
+            self.save_hud_btn.configure(state="normal")
+            self.select_hud_rect(-1)
+            self.refresh_image_display()
+            self.log(f"HUD Chargé: {os.path.basename(file_path)} ({len(new_hud_rects)} zones)")
+            
+        except Exception as e:
+            self.log(f"Erreur lors du chargement: {e}")
+            print(f"Load Error: {e}")
 
     def select_hud_rect(self, idx):
         self.selected_rect_idx = idx
