@@ -97,19 +97,43 @@ class FlycastViewer(ctk.CTk):
             on_progress=self.log # Pass the log function here
         )
 
-        # Configuration de la grille
-        self.grid_columnconfigure(1, weight=1)
+        # Configuration de la grille (3 colonnes)
+        self.grid_columnconfigure(0, weight=0) # Navigation (Tabs)
+        self.grid_columnconfigure(1, weight=0) # Contrôles / Outils
+        self.grid_columnconfigure(2, weight=1) # Zone Image (Flexible)
         self.grid_rowconfigure(0, weight=1)
 
+        self._setup_nav_sidebar()
         self._setup_sidebar()
         self._setup_image_area()
+
+        # État initial de l'interface
+        self._set_ui_visibility(False)
 
         # Propre fermeture
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
+    def _setup_nav_sidebar(self):
+        self.nav_sidebar = ctk.CTkFrame(self, width=320, corner_radius=0, border_width=1, border_color="#222222")
+        self.nav_sidebar.grid(row=0, column=0, sticky="nsew")
+        self.nav_sidebar.grid_propagate(False)
+
+        # Tabview moved here
+        self.tabview = ctk.CTkTabview(self.nav_sidebar, width=300, command=self._on_tab_changed)
+        self.tabview.pack(pady=(20, 20), padx=10, fill="both", expand=True)
+
+        self.gbuffer_tab = self.tabview.add("G-Buffer Viewer")
+        self.poly_routing_tab = self.tabview.add("Poly Routing")
+        self.hud_compositor_tab = self.tabview.add("HUD Compositor")
+
+        # Configure tabs
+        self.tabview.tab("G-Buffer Viewer").grid_columnconfigure(0, weight=1)
+        self.tabview.tab("Poly Routing").grid_columnconfigure(0, weight=1)
+        self.tabview.tab("HUD Compositor").grid_columnconfigure(0, weight=1)
+
     def _setup_sidebar(self):
         self.sidebar = ctk.CTkFrame(self, width=350, corner_radius=0)
-        self.sidebar.grid(row=0, column=0, sticky="nsew")
+        self.sidebar.grid(row=0, column=1, sticky="nsew")
         self.sidebar.grid_propagate(False)
 
         self.logo_label = ctk.CTkLabel(self.sidebar, text="FLYCAST G-BUFFER", font=ctk.CTkFont(family="Inter", size=24, weight="bold"))
@@ -140,18 +164,7 @@ class FlycastViewer(ctk.CTk):
         self.appearance_mode_optionemenu.pack(pady=(0, 10), padx=20, fill="x")
         self.appearance_mode_optionemenu.set("System") # Default to system theme
 
-        # Tabview for G-Buffer Viewer and HUD Selector
-        self.tabview = ctk.CTkTabview(self.sidebar, width=300, command=self._on_tab_changed)
-        self.tabview.pack(pady=(20, 0), padx=20, fill="both", expand=True)
-
-        self.gbuffer_tab = self.tabview.add("G-Buffer Viewer")
-        self.poly_routing_tab = self.tabview.add("Poly Routing")
-        self.hud_compositor_tab = self.tabview.add("HUD Compositor")
-
-        # Configure tabs
-        self.tabview.tab("G-Buffer Viewer").grid_columnconfigure(0, weight=1)
-        self.tabview.tab("Poly Routing").grid_columnconfigure(0, weight=1)
-        self.tabview.tab("HUD Compositor").grid_columnconfigure(0, weight=1)
+        self.appearance_mode_optionemenu.set("System") # Default to system theme
 
         # Poly Routing Tab UI
         ctk.CTkLabel(self.poly_routing_tab, text="ANNOTATION", font=ctk.CTkFont(size=11, weight="bold")).pack(pady=(10, 0), padx=20, anchor="w")
@@ -235,15 +248,12 @@ class FlycastViewer(ctk.CTk):
 
     def _setup_image_area(self):
         self.image_container = ctk.CTkFrame(self, fg_color="#050505", corner_radius=0)
-        self.image_container.grid(row=0, column=1, sticky="nsew")
+        self.image_container.grid(row=0, column=2, sticky="nsew")
 
         self.display_label = ctk.CTkLabel(self.image_container, text="", cursor="crosshair")
         self.display_label.place(relx=0.5, rely=0.5, anchor="center")
 
-        # Display logo initially if available
-        if self.logo_image:
-            self.display_label.configure(image=self.logo_image, text="")
-            self.display_label.image = self.logo_image # Keep a reference
+        # Display initially empty (Splash Screen will handle the logo)
 
         # Overlay de chargement
         self.loading_overlay = ctk.CTkFrame(self.image_container, fg_color="#1a1a1a", corner_radius=15, border_width=2,
@@ -262,6 +272,23 @@ class FlycastViewer(ctk.CTk):
         self.magnifier_label = ctk.CTkLabel(self.image_container, text="", fg_color="transparent")
         self.value_info_label = ctk.CTkLabel(self.image_container, text="", font=ctk.CTkFont(size=12, weight="bold"),
                                              fg_color="#3498db", text_color="white", corner_radius=4)
+
+        # Splash Screen (visible when no EXR)
+        self.splash_frame = ctk.CTkFrame(self.image_container, fg_color="transparent")
+        self.splash_frame.place(relx=0.5, rely=0.5, anchor="center")
+
+        if self.logo_image:
+             self.splash_logo = ctk.CTkLabel(self.splash_frame, image=self.logo_image, text="")
+             self.splash_logo.pack(pady=20)
+        
+        self.splash_btn = ctk.CTkButton(self.splash_frame, text="OUVRIR UN FICHIER EXR", command=self.open_file,
+                                        width=300, height=60, font=ctk.CTkFont(size=16, weight="bold"),
+                                        fg_color="#3498db", hover_color="#2980b9")
+        self.splash_btn.pack(pady=20)
+
+        self.splash_hint = ctk.CTkLabel(self.splash_frame, text="Glissez-déposez ou cliquez pour commencer", 
+                                        font=ctk.CTkFont(size=12), text_color="#555555")
+        self.splash_hint.pack()
 
         self.hide_loading()
         self.image_container.bind("<Configure>", self.on_resize)
@@ -306,6 +333,17 @@ class FlycastViewer(ctk.CTk):
     def on_closing(self):
         self.loader.cancel()
         self.destroy()
+
+    def _set_ui_visibility(self, visible):
+        """Affiche ou masque les panneaux latéraux de l'interface"""
+        if visible:
+            self.nav_sidebar.grid()
+            self.sidebar.grid()
+            self.splash_frame.place_forget()
+        else:
+            self.nav_sidebar.grid_remove()
+            self.sidebar.grid_remove()
+            self.splash_frame.place(relx=0.5, rely=0.5, anchor="center")
 
     def hide_magnifier(self, event=None):
         self.display_label.configure(cursor="")
@@ -360,6 +398,9 @@ class FlycastViewer(ctk.CTk):
         
         if default_mode:
             self.update_view_mode(default_mode)
+        
+        # Révéler l'UI une fois chargé
+        self._set_ui_visibility(True)
 
     def _update_composite_buttons_state(self):
         # Composite (RGB) nécessite Albedo.R, G, B
@@ -395,11 +436,13 @@ class FlycastViewer(ctk.CTk):
         self._display_logo_if_no_image() # Re-display logo on cancelled
 
     def _display_logo_if_no_image(self):
+        # Only show logo in display_label if the splash screen is hidden
         if self.last_numpy_image is None and self.logo_image:
-            self.display_label.configure(image=self.logo_image, text="")
-            self.display_label.image = self.logo_image # Keep a reference
+            if self.splash_frame.winfo_manager() == "": # Check if not placed
+                self.display_label.configure(image=self.logo_image, text="")
+                self.display_label.image = self.logo_image
         elif self.last_numpy_image is None and not self.logo_image:
-            self.display_label.configure(image=None, text="No image loaded and no logo available.")
+            self.display_label.configure(image=None, text="No image loaded")
             self.display_label.image = None
 
 
