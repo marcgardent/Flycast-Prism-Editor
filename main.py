@@ -4,8 +4,9 @@ from tkinter import filedialog, messagebox
 from PIL import Image, ImageOps, ImageDraw
 import numpy as np
 from platformdirs import user_pictures_dir
-
+import json
 from constants import STANDARD_CHANNELS, Channels # Import Channels class
+from tkinter import filedialog
 from exr_loader import EXRLoader
 from image_processor import ImageProcessor
 from hud_compositor import HudCompositor, Anchor
@@ -154,6 +155,10 @@ class FlycastViewer(ctk.CTk):
                                             fg_color="#c0392b", hover_color="#e74c3c")
         self.delete_rect_btn.pack(pady=5, padx=15, fill="x")
         self.delete_rect_btn.configure(state="disabled")
+
+        self.save_hud_btn = ctk.CTkButton(self.hud_compositor_tab, text="SAUVEGARDER JSON", command=self.save_hud_json,
+                                         fg_color="#27ae60", hover_color="#2ecc71")
+        self.save_hud_btn.pack(pady=10, padx=15, fill="x")
 
 
         # Modes Composites (moved to G-Buffer Viewer tab)
@@ -646,6 +651,71 @@ class FlycastViewer(ctk.CTk):
         self.hud_rects.append(new_rect)
         self.select_hud_rect(len(self.hud_rects)-1)
         self.refresh_image_display()
+
+    def export_hud_json(self, to_file=False):
+        if not self.hud_rects:
+            self.log("Aucune zone HUD à exporter.")
+            return
+
+        orig_w, orig_h = self.image_size
+        v_scale = 480.0 / orig_h
+        VW = orig_w * v_scale
+        
+        # Anchors in Virtual Space
+        v_anchors = HudCompositor.get_anchor_table(orig_w, orig_h)
+        v_anchors = {k: (v[0] * v_scale, v[1] * v_scale) for k, v in v_anchors.items()}
+        
+        source_anchor_vpos = v_anchors[Anchor.SCREEN_CENTER]
+        
+        hud_zones = []
+        for r in self.hud_rects:
+            vsx, vsy = r["sx"] * v_scale, r["sy"] * v_scale
+            src_x = int(round(vsx - source_anchor_vpos[0]))
+            src_y = int(round(vsy - source_anchor_vpos[1]))
+            
+            vdx, vdy = r["dx"] * v_scale, r["dy"] * v_scale
+            anchor_enum = r["anchor"]
+            if isinstance(anchor_enum, str): anchor_enum = Anchor[anchor_enum]
+            
+            dest_anchor_vpos = v_anchors[anchor_enum]
+            map_x = int(round(vdx - dest_anchor_vpos[0]))
+            map_y = int(round(vdy - dest_anchor_vpos[1]))
+            
+            zone = {
+                "name": r["name"],
+                "w": int(round(r["w"] * v_scale)),
+                "h": int(round(r["h"] * v_scale)),
+                "zen_mode": r.get("zen", False),
+                "source": {
+                    "x": src_x,
+                    "y": src_y,
+                    "anchor": "SCREEN_CENTER"
+                },
+                "mapping": {
+                    "x": map_x,
+                    "y": map_y,
+                    "anchor": anchor_enum.name
+                }
+            }
+            hud_zones.append(zone)
+            
+        export_data = {
+            "safe_zone": {"w": 640, "h": 480},
+            "hud_zones": hud_zones
+        }
+        
+        json_str = json.dumps(export_data, indent=2)
+        
+        file_path = filedialog.asksaveasfilename(defaultextension=".json",
+                                                 filetypes=[("JSON files", "*.json")],
+                                                 title="Sauvegarder HUD Compositor")
+        if file_path:
+            with open(file_path, "w") as f:
+                f.write(json_str)
+            self.log(f"HUD Sauvegardé dans: {os.path.basename(file_path)}")
+
+    def save_hud_json(self):
+        self.export_hud_json()
 
     def select_hud_rect(self, idx):
         self.selected_rect_idx = idx
