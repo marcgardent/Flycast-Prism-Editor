@@ -8,6 +8,7 @@ from platformdirs import user_pictures_dir
 from constants import STANDARD_CHANNELS, Channels # Import Channels class
 from exr_loader import EXRLoader
 from image_processor import ImageProcessor
+from hud_compositor import HudCompositor
 
 class FlycastViewer(ctk.CTk):
     def __init__(self):
@@ -95,15 +96,17 @@ class FlycastViewer(ctk.CTk):
         self.appearance_mode_optionemenu.set("System") # Default to system theme
 
         # Tabview for G-Buffer Viewer and HUD Selector
-        self.tabview = ctk.CTkTabview(self.sidebar, width=300)
+        self.tabview = ctk.CTkTabview(self.sidebar, width=300, command=self._on_tab_changed)
         self.tabview.pack(pady=(20, 0), padx=20, fill="both", expand=True)
 
         self.gbuffer_tab = self.tabview.add("G-Buffer Viewer")
         self.poly_routing_tab = self.tabview.add("Poly Routing")
+        self.hud_compositor_tab = self.tabview.add("HUD Compositor")
 
         # Configure tabs
         self.tabview.tab("G-Buffer Viewer").grid_columnconfigure(0, weight=1)
         self.tabview.tab("Poly Routing").grid_columnconfigure(0, weight=1)
+        self.tabview.tab("HUD Compositor").grid_columnconfigure(0, weight=1)
 
         # Poly Routing Tab UI
         ctk.CTkLabel(self.poly_routing_tab, text="ANNOTATION", font=ctk.CTkFont(size=11, weight="bold")).pack(pady=(10, 0), padx=20, anchor="w")
@@ -337,6 +340,35 @@ class FlycastViewer(ctk.CTk):
         self.last_numpy_image = self.view_cache[mode]
         self.refresh_image_display()
 
+    def _on_tab_changed(self):
+        # Refresh display to show/hide safe zone or other tab-specific overlays
+        self.refresh_image_display()
+
+    def _draw_safe_zone(self, pil_image):
+        """Draws a 640x480 ratio safe zone centered on the image."""
+        img_w, img_h = pil_image.size
+        
+        # Target ratio 640:480 = 4:3
+        target_ratio = 640 / 480
+        
+        # Height matches image height as per instruction: "La hauteur de l'image correspond à 480"
+        sz_h = img_h
+        sz_w = int(sz_h * target_ratio)
+        
+        # Center horizontally
+        x_offset = (img_w - sz_w) // 2
+        
+        draw = ImageDraw.Draw(pil_image)
+        
+        # Rectangle coordinates
+        rect = [x_offset, 0, x_offset + sz_w, sz_h]
+        
+        # Draw outline (Green for visibility)
+        draw.rectangle(rect, outline="#00ff00", width=3)
+        
+        # Draw thin crosshair or secondary markers if needed? (Instruction says "rectangle appelé safeZone")
+        # For now, just the rectangle.
+
     def on_resize(self, event=None):
         if self.last_numpy_image is not None and not self.is_loading:
             self.refresh_image_display()
@@ -353,12 +385,19 @@ class FlycastViewer(ctk.CTk):
         if cont_w < 50 or cont_h < 50: return
 
         self.full_pil_image = Image.fromarray(self.last_numpy_image)
-        img_w, img_h = self.full_pil_image.size
+        
+        # Apply overlays based on active tab
+        display_pil = self.full_pil_image
+        if self.tabview.get() == "HUD Compositor":
+            display_pil = self.full_pil_image.copy()
+            HudCompositor.draw_overlay(display_pil)
+
+        img_w, img_h = display_pil.size
         ratio = min(cont_w / img_w, cont_h / img_h)
         self.display_size = (int(img_w * ratio), int(img_h * ratio))
 
         if self.display_size[0] > 0 and self.display_size[1] > 0:
-            resized_pil = self.full_pil_image.resize(self.display_size, Image.Resampling.LANCZOS)
+            resized_pil = display_pil.resize(self.display_size, Image.Resampling.LANCZOS)
             ctk_img = ctk.CTkImage(light_image=resized_pil, dark_image=resized_pil, size=self.display_size)
             self.display_label.configure(image=ctk_img)
             self.display_label.image = ctk_img # Keep a reference
