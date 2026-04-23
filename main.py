@@ -8,7 +8,7 @@ from platformdirs import user_pictures_dir
 from constants import STANDARD_CHANNELS, Channels # Import Channels class
 from exr_loader import EXRLoader
 from image_processor import ImageProcessor
-from hud_compositor import HudCompositor
+from hud_compositor import HudCompositor, Anchor
 
 class FlycastViewer(ctk.CTk):
     def __init__(self):
@@ -466,6 +466,16 @@ class FlycastViewer(ctk.CTk):
         self.drag_start_orig = (ox, oy)
         
         mode = self.hud_workspace
+        orig_w, orig_h = self.image_size
+        
+        # In DESTINATION mode, check for anchor selection first if a rectangle is active
+        if mode == "DESTINATION" and self.selected_rect_idx != -1:
+            anchors = HudCompositor.get_anchor_table(orig_w, orig_h)
+            for anchor, apos in anchors.items():
+                if abs(ox - apos[0]) < 20 and abs(oy - apos[1]) < 20: # 20px threshold
+                    self.hud_rects[self.selected_rect_idx]["anchor"] = anchor
+                    self.refresh_image_display()
+                    return
         
         # Check for handles of selected rect (SOURCE only)
         if self.selected_rect_idx != -1 and mode == "SOURCE":
@@ -509,7 +519,8 @@ class FlycastViewer(ctk.CTk):
                 "name": f"Rectangle {len(self.hud_rects)+1}", 
                 "sx": ox, "sy": oy, 
                 "dx": ox, "dy": oy, 
-                "w": 0, "h": 0
+                "w": 0, "h": 0,
+                "anchor": Anchor.SCREEN_TOP_LEFT
             }
             self.hud_rects.append(new_rect)
             self.select_hud_rect(len(self.hud_rects)-1)

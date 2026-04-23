@@ -52,7 +52,20 @@ class HudCompositor:
         }
 
     @staticmethod
-    def draw_diamond(draw, center, size=10, color="green"):
+    def draw_dotted_line(draw, p1, p2, color="white", width=1, dash_length=5):
+        x1, y1 = p1
+        x2, y2 = p2
+        dist = ((x2 - x1)**2 + (y2 - y1)**2)**0.5
+        if dist == 0: return
+        
+        dx, dy = (x2 - x1) / dist, (y2 - y1) / dist
+        for i in range(0, int(dist), dash_length * 2):
+            start = (x1 + dx * i, y1 + dy * i)
+            end = (x1 + dx * min(dist, i + dash_length), y1 + dy * min(dist, i + dash_length))
+            draw.line([start, end], fill=color, width=width)
+
+    @staticmethod
+    def draw_diamond(draw, center, size=10, color="green", fill=None):
         x, y = center
         points = [
             (x, y - size), # Top
@@ -60,7 +73,7 @@ class HudCompositor:
             (x, y + size), # Bottom
             (x - size, y)  # Left
         ]
-        draw.polygon(points, outline=color, fill=None, width=2)
+        draw.polygon(points, outline=color, fill=fill, width=2)
 
     @staticmethod
     def draw_overlay(pil_image, user_rects=None, selected_idx=-1, mode="SOURCE"):
@@ -81,15 +94,25 @@ class HudCompositor:
             draw.rectangle(rect, outline="#00ff00", width=3)
         
         # 2. Anchors (DESTINATION only)
+        anchors = HudCompositor.get_anchor_table(orig_w, orig_h)
         if mode == "DESTINATION":
-            anchors = HudCompositor.get_anchor_table(orig_w, orig_h)
             for anchor, pos in anchors.items():
                 draw_pos = (pos[0] + p, pos[1] + p)
+                
+                # Check if this anchor is assigned to the selected rectangle
+                is_active_anchor = False
+                if selected_idx != -1:
+                    active_r = user_rects[selected_idx]
+                    if active_r.get("anchor") == anchor:
+                        is_active_anchor = True
+                
                 if "SAFE_ZONE" in anchor.name:
                     color = "#00ff00" # Green
                 else:
-                    color = "#9b59b6" # Purple (Amethyst/Mauve)
-                HudCompositor.draw_diamond(draw, draw_pos, size=12, color=color)
+                    color = "#9b59b6" # Purple
+                
+                fill_color = color if is_active_anchor else None
+                HudCompositor.draw_diamond(draw, draw_pos, size=12, color=color, fill=fill_color)
             
         # 3. User Rectangles
         if user_rects:
@@ -110,14 +133,28 @@ class HudCompositor:
                 # Draw name
                 draw.text((rx + 5, ry + 5), r.get("name", f"Rect {i}"), fill=color)
                 
-                # Draw handles if selected (SOURCE only)
-                if is_selected and mode == "SOURCE":
-                    h_size = 6
-                    handles = [
-                        (rx, ry), (rx + rw, ry), 
-                        (rx, ry + rh), (rx + rw, ry + rh)
-                    ]
-                    for hx, hy in handles:
-                        draw.rectangle([hx - h_size, hy - h_size, hx + h_size, hy + h_size], fill=color)
+                # Draw handles if selected
+                if is_selected:
+                    # Connection line to anchor (DESTINATION mode only)
+                    if mode == "DESTINATION" and r.get("anchor"):
+                        anchor_name = r["anchor"]
+                        if isinstance(anchor_name, str): # Handle string if Enum is serialized
+                             anchor_name = Anchor[anchor_name]
+                        
+                        anchor_pos = anchors.get(anchor_name)
+                        if anchor_pos:
+                            ap = (anchor_pos[0] + p, anchor_pos[1] + p)
+                            # Draw dotted line from rectangle center to anchor
+                            rect_center = (rx + rw/2, ry + rh/2)
+                            HudCompositor.draw_dotted_line(draw, rect_center, ap, color=color, width=2)
+
+                    if mode == "SOURCE":
+                        h_size = 6
+                        handles = [
+                            (rx, ry), (rx + rw, ry), 
+                            (rx, ry + rh), (rx + rw, ry + rh)
+                        ]
+                        for hx, hy in handles:
+                            draw.rectangle([hx - h_size, hy - h_size, hx + h_size, hy + h_size], fill=color)
             
         return padded_img
