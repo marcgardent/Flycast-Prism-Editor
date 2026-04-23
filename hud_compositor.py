@@ -143,7 +143,14 @@ class HudCompositor:
             for i, r in enumerate(user_rects):
                 is_selected = (i == selected_idx)
                 is_overlapping = (i in overlapping_indices)
-                color = "#f1c40f" if is_selected else "#e67e22" # Yellow if selected, Orange otherwise
+                is_zen = r.get("zen", False)
+                
+                # Color Coding
+                if is_zen:
+                    color = "#1abc9c" if is_selected else "#3498db" # Teal if selected, Blue otherwise
+                else:
+                    color = "#f1c40f" if is_selected else "#e67e22" # Yellow if selected, Orange otherwise
+                
                 width = 3 if is_selected else 2
                 
                 # Use sx/sy for SOURCE, dx/dy for DESTINATION
@@ -163,21 +170,24 @@ class HudCompositor:
                 # Draw name
                 draw.text((rx + 5, ry + 5), r.get("name", f"Rect {i}"), fill=color)
                 
+                # Connection line to anchor (DESTINATION mode only) - now for ALL rects
+                if mode == "DESTINATION" and r.get("anchor"):
+                    anchor_name = r["anchor"]
+                    if isinstance(anchor_name, str):
+                         anchor_name = Anchor[anchor_name]
+                    
+                    anchor_pos = anchors.get(anchor_name)
+                    if anchor_pos:
+                        ap = (anchor_pos[0] + p, anchor_pos[1] + p)
+                        # Draw dotted line from rectangle center to anchor
+                        rect_center = (rx + rw/2, ry + rh/2)
+                        # Slightly different look for non-selected to avoid clutter? 
+                        # Let's keep same color but maybe thinner if not selected
+                        l_width = 2 if is_selected else 1
+                        HudCompositor.draw_dotted_line(draw, rect_center, ap, color=color, width=l_width)
+
                 # Draw handles if selected
                 if is_selected:
-                    # Connection line to anchor (DESTINATION mode only)
-                    if mode == "DESTINATION" and r.get("anchor"):
-                        anchor_name = r["anchor"]
-                        if isinstance(anchor_name, str): # Handle string if Enum is serialized
-                             anchor_name = Anchor[anchor_name]
-                        
-                        anchor_pos = anchors.get(anchor_name)
-                        if anchor_pos:
-                            ap = (anchor_pos[0] + p, anchor_pos[1] + p)
-                            # Draw dotted line from rectangle center to anchor
-                            rect_center = (rx + rw/2, ry + rh/2)
-                            HudCompositor.draw_dotted_line(draw, rect_center, ap, color=color, width=2)
-
                     if mode == "SOURCE":
                         h_size = 6
                         handles = [

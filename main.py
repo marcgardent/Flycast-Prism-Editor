@@ -145,6 +145,11 @@ class FlycastViewer(ctk.CTk):
         self.hud_name_entry.pack(pady=5, padx=15, fill="x")
         self.hud_name_var.trace_add("write", lambda *args: self.rename_selected_rect())
 
+        self.hud_zen_var = ctk.BooleanVar()
+        self.hud_zen_checkbox = ctk.CTkCheckBox(self.hud_compositor_tab, text="Zen Mode", 
+                                               variable=self.hud_zen_var, command=self.toggle_zen_mode)
+        self.hud_zen_checkbox.pack(pady=5, padx=15, anchor="w")
+
         self.delete_rect_btn = ctk.CTkButton(self.hud_compositor_tab, text="SUPPRIMER", command=self.delete_selected_rect,
                                             fg_color="#c0392b", hover_color="#e74c3c")
         self.delete_rect_btn.pack(pady=5, padx=15, fill="x")
@@ -528,7 +533,8 @@ class FlycastViewer(ctk.CTk):
                 "sx": ox, "sy": oy, 
                 "dx": ox, "dy": oy, 
                 "w": 0, "h": 0,
-                "anchor": Anchor.SCREEN_TOP_LEFT
+                "anchor": Anchor.SCREEN_TOP_LEFT,
+                "zen": False
             }
             self.hud_rects.append(new_rect)
             self.select_hud_rect(len(self.hud_rects)-1)
@@ -644,13 +650,23 @@ class FlycastViewer(ctk.CTk):
     def select_hud_rect(self, idx):
         self.selected_rect_idx = idx
         if idx != -1:
-            self.hud_name_var.set(self.hud_rects[idx]["name"])
+            r = self.hud_rects[idx]
+            self.hud_name_var.set(r["name"])
+            self.hud_zen_var.set(r.get("zen", False))
             self.delete_rect_btn.configure(state="normal")
+            self.hud_zen_checkbox.configure(state="normal")
         else:
             self.hud_name_var.set("")
+            self.hud_zen_var.set(False)
             self.delete_rect_btn.configure(state="disabled")
+            self.hud_zen_checkbox.configure(state="disabled")
         self.update_hud_list()
         self.refresh_image_display()
+
+    def toggle_zen_mode(self):
+        if self.selected_rect_idx != -1:
+            self.hud_rects[self.selected_rect_idx]["zen"] = self.hud_zen_var.get()
+            self.refresh_image_display()
 
     def rename_selected_rect(self):
         if self.selected_rect_idx != -1:
@@ -661,7 +677,10 @@ class FlycastViewer(ctk.CTk):
     def delete_selected_rect(self):
         if self.selected_rect_idx != -1:
             del self.hud_rects[self.selected_rect_idx]
-            self.select_hud_rect(-1)
+            if self.hud_rects:
+                self.select_hud_rect(0)
+            else:
+                self.select_hud_rect(-1)
             self.refresh_image_display()
 
     def update_hud_list(self):
